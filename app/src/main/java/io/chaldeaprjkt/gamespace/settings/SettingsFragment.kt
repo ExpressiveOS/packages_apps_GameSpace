@@ -79,14 +79,18 @@ class SettingsFragment : Hilt_SettingsFragment(),
             Build.MANUFACTURER.equals("Google", ignoreCase = true) ||
             SystemProperties.getBoolean("persist.sys.battery_bypass_supported", false)
 
+        val inGameCategory = findPreference<PreferenceCategory>("in_game_preferences")
+
         if (!isBypassSupported) {
-            findPreference<PreferenceCategory>("in_game_preferences")
-                ?.removePreference(findPreference("bypass_charge_enabled")!!)
+            findPreference<Preference>("bypass_charge_enabled")?.let {
+                inGameCategory?.removePreference(it)
+            }
         }
 
         if (!hasVibrator()) {
-            findPreference<PreferenceCategory>("in_game_preferences")
-                ?.removePreference(findPreference("gamespace_pulse_bass_haptics_disabled")!!)
+            findPreference<Preference>("gamespace_pulse_bass_haptics_disabled")?.let {
+                inGameCategory?.removePreference(it)
+            }
         }
     }
 

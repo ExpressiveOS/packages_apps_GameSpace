@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2025 AxionOS
+ * Copyright (C) 2025-2026 AxionOS
+ * SPDX-FileCopyrightText: 2026 The ExpressiveOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,18 +18,23 @@ package io.chaldeaprjkt.gamespace.gamebar.fps
 
 import android.app.ActivityTaskManager
 import android.content.Context
-import android.hardware.display.DisplayManager
 import android.view.WindowManager
 import android.window.TaskFpsCallback
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.*
-import kotlin.math.max
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.launch
 
+@OptIn(FlowPreview::class)
 @Singleton
 class FpsInteractor @Inject constructor(private val context: Context) {
 
@@ -39,6 +45,9 @@ class FpsInteractor @Inject constructor(private val context: Context) {
 
     private val _fpsHistory = MutableStateFlow<List<Float>>(emptyList())
     val fpsHistory: StateFlow<List<Float>> get() = _fpsHistory
+
+    private val _currentFps = MutableStateFlow(0f)
+    val currentFps: StateFlow<Float> get() = _currentFps
 
     private val _dynamicMaxFps = MutableStateFlow(60f)
     val dynamicMaxFps: StateFlow<Float> get() = _dynamicMaxFps
@@ -51,17 +60,21 @@ class FpsInteractor @Inject constructor(private val context: Context) {
     private val buffer = ArrayDeque<Float>(historySize)
 
     private val fpsFlow = MutableSharedFlow<Float>(extraBufferCapacity = 64)
+    private var registered = false
 
     private val fpsCallback = object : TaskFpsCallback() {
         override fun onFpsReported(fps: Float) {
-            fpsFlow.tryEmit(fps)
+            if (fps.isFinite() && fps >= 0f) {
+                _currentFps.value = fps
+                fpsFlow.tryEmit(fps)
+            }
         }
     }
 
     init {
         coroutineScope.launch {
             fpsFlow
-                .sample(1000) 
+                .sample(1000)
                 .map { fps ->
                     val smoothed = (buffer.lastOrNull() ?: fps) * 0.75f + fps * 0.25f
                     if (buffer.size >= historySize) buffer.removeFirst()
@@ -70,7 +83,7 @@ class FpsInteractor @Inject constructor(private val context: Context) {
                     smoothed to dynamicMax
                 }
                 .flowOn(Dispatchers.Default)
-                .collect { (smoothed, dynamicMax) ->
+                .collect { (_, dynamicMax) ->
                     _fpsHistory.value = buffer.toList()
                     _dynamicMaxFps.value = dynamicMax
                 }
@@ -78,11 +91,19 @@ class FpsInteractor @Inject constructor(private val context: Context) {
     }
 
     fun start() {
+        if (registered) return
         val taskId = taskManager?.focusedRootTaskInfo?.taskId ?: return
-        wm.registerTaskFpsCallback(taskId, Runnable::run, fpsCallback)
+        runCatching {
+            wm.registerTaskFpsCallback(taskId, Runnable::run, fpsCallback)
+            registered = true
+        }
     }
 
     fun dispose() {
-        wm.unregisterTaskFpsCallback(fpsCallback)
+        if (!registered) return
+        registered = false
+        runCatching {
+            wm.unregisterTaskFpsCallback(fpsCallback)
+        }
     }
 }

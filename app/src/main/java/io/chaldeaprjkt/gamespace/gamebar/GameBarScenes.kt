@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2025-2026 AxionOS
+ * SPDX-FileCopyrightText: 2026 The ExpressiveOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +17,9 @@
 
 package io.chaldeaprjkt.gamespace.gamebar
 
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import com.android.compose.animation.scene.ElementKey
 import com.android.compose.animation.scene.InterruptionHandler
 import com.android.compose.animation.scene.InterruptionResult
@@ -37,7 +38,7 @@ object GameBarElements {
     val VerticalPillContent = ElementKey("gamebar_vertical_pill_content")
 }
 
-val GameBarTransitions: SceneTransitions = transitions {
+fun buildGameBarTransitions(reducedMotion: Boolean): SceneTransitions = transitions {
     interruptionHandler = object : InterruptionHandler {
         override fun onInterruption(
             interrupted: TransitionState.Transition.ChangeScene,
@@ -49,14 +50,24 @@ val GameBarTransitions: SceneTransitions = transitions {
     }
 
     from(GameBarScenes.Pill, to = GameBarScenes.VerticalPill) {
-        spec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
-        fractionRange(end = 0.25f) { fade(GameBarElements.PillContent) }
-        fractionRange(start = 0.15f) { fade(GameBarElements.VerticalPillContent) }
+        spec = if (reducedMotion) {
+            snap()
+        } else {
+            spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMedium)
+        }
+        fractionRange(end = 0.30f) { fade(GameBarElements.PillContent) }
+        fractionRange(start = 0.12f) { fade(GameBarElements.VerticalPillContent) }
     }
 
     from(GameBarScenes.VerticalPill, to = GameBarScenes.Pill) {
-        spec = tween(durationMillis = 150, easing = FastOutLinearInEasing)
-        fractionRange(end = 0.4f) { fade(GameBarElements.VerticalPillContent) }
-        fractionRange(start = 0.3f) { fade(GameBarElements.PillContent) }
+        spec = if (reducedMotion) {
+            snap()
+        } else {
+            spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMedium)
+        }
+        fractionRange(end = 0.35f) { fade(GameBarElements.VerticalPillContent) }
+        fractionRange(start = 0.25f) { fade(GameBarElements.PillContent) }
     }
 }
+
+val GameBarTransitions: SceneTransitions = buildGameBarTransitions(reducedMotion = false)

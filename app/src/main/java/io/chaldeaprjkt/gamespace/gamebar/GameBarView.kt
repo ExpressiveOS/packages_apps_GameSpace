@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2025-2026 AxionOS
+ * SPDX-FileCopyrightText: 2026 The ExpressiveOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +19,8 @@
 
 package io.chaldeaprjkt.gamespace.gamebar
 
-import kotlin.math.abs
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,18 +30,19 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,25 +56,34 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.android.axion.compose.expressive.ExpressiveBlurSurface
+import com.android.axion.compose.expressive.ExpressiveMorphContainer
+import com.android.axion.compose.expressive.ExpressiveShapePreset
+import com.android.axion.compose.expressive.rememberExpressiveHaptics
+import com.android.axion.compose.expressive.rememberExpressiveReducedMotion
+import com.android.axion.compose.theme.EmphasizedTabularStyle
 import com.android.compose.animation.scene.SceneTransitionLayout
 import com.android.compose.animation.scene.SwipeDetector
 import com.android.compose.animation.scene.rememberMutableSceneTransitionLayoutState
 import io.chaldeaprjkt.gamespace.R
+import kotlin.math.abs
 
-private const val PILL_WIDTH_DP = 36
+private const val PILL_WIDTH_DP = 52
 private const val PILL_BUTTON_SIZE_DP = 40
 private const val NOTCH_WIDTH_DP = 14
-private const val NOTCH_HEIGHT_DP = 36
-private const val NOTCH_CHEVRON_SIZE_DP = 10
+private const val NOTCH_HEIGHT_DP = 44
 private const val NOTCH_TOUCH_WIDTH_DP = 28
 private const val DRAG_THRESHOLD_DP = 12
+private const val FPS_PILL_HEIGHT_DP = 30
 
 @Composable
 fun GameBarView(
@@ -95,9 +107,13 @@ fun GameBarView(
     onDragUpdate: (Int, Int) -> Unit,
     onDragEnd: (Int, Int) -> Unit,
 ) {
+    val reducedMotion = rememberExpressiveReducedMotion()
+    val haptics = rememberExpressiveHaptics()
+    val transitions = remember(reducedMotion) { buildGameBarTransitions(reducedMotion) }
+
     val state = rememberMutableSceneTransitionLayoutState(
         initialScene = GameBarScenes.Pill,
-        transitions = GameBarTransitions,
+        transitions = transitions,
     )
     val scope = rememberCoroutineScope()
     val noSwipe = remember {
@@ -108,6 +124,11 @@ fun GameBarView(
 
     val animatedPillAlpha by animateFloatAsState(
         targetValue = if (isIdle) idleAlpha else 1f,
+        animationSpec = if (reducedMotion) {
+            snap()
+        } else {
+            MaterialTheme.motionScheme.defaultEffectsSpec()
+        },
         label = "pillAlpha",
     )
 
@@ -144,6 +165,7 @@ fun GameBarView(
                         (abs(accDragY) > dragThresholdPx || abs(accDragX) > dragThresholdPx)
                     ) {
                         repositioning = true
+                        haptics.performGestureStart()
                     }
                     if (repositioning) {
                         onDragUpdate(
@@ -154,6 +176,7 @@ fun GameBarView(
                 },
                 onDragEnd = {
                     if (repositioning) {
+                        haptics.performSheetSnap()
                         onDragEnd(
                             startWindowX + accDragX.toInt(),
                             startWindowY + accDragY.toInt(),
@@ -184,6 +207,7 @@ fun GameBarView(
                     idleAlpha = animatedPillAlpha,
                     pointerModifier = pointerModifier,
                     onTap = {
+                        haptics.performSheetSnap()
                         state.setTargetScene(GameBarScenes.VerticalPill, scope)
                         onExpanded()
                     },
@@ -234,8 +258,6 @@ fun GameBarView(
     }
 }
 
-private const val FPS_CIRCLE_SIZE_DP = 28
-
 @Composable
 private fun PillTab(
     dockedOnLeft: Boolean,
@@ -246,29 +268,62 @@ private fun PillTab(
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Collapsed HUD intentionally uses lightweight tonal scrim without live Kawase window blur
+    // so 3D games incur zero GPU compositing overhead during active gameplay.
     if (showFps) {
-        Box(
+        val fpsShape = if (dockedOnLeft) {
+            RoundedCornerShape(
+                topStart = 6.dp,
+                bottomStart = 6.dp,
+                topEnd = 1000.dp,
+                bottomEnd = 1000.dp,
+            )
+        } else {
+            RoundedCornerShape(
+                topStart = 1000.dp,
+                bottomStart = 1000.dp,
+                topEnd = 6.dp,
+                bottomEnd = 6.dp,
+            )
+        }
+        val resolvedFps = fpsText.ifBlank { "--" }
+        Row(
             modifier = modifier
-                .size(FPS_CIRCLE_SIZE_DP.dp)
+                .height(FPS_PILL_HEIGHT_DP.dp)
+                .widthIn(min = 44.dp)
                 .alpha(idleAlpha)
                 .then(pointerModifier)
                 .pointerInput(onTap) { detectTapGestures(onTap = { onTap() }) }
-                .border(0.5.dp, Color.White.copy(alpha = 0.4f), CircleShape)
-                .clip(CircleShape)
-                .background(Color(0xCC1A1A1A)),
-            contentAlignment = Alignment.Center,
+                .clip(fpsShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f))
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+                    shape = fpsShape,
+                )
+                .padding(horizontal = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
         ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+            )
+            Spacer(modifier = Modifier.width(5.dp))
             Text(
-                text = fpsText,
-                color = Color.White,
-                style = MaterialTheme.typography.labelSmall,
+                text = resolvedFps,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = EmphasizedTabularStyle(MaterialTheme.typography.labelMediumEmphasized),
+                maxLines = 1,
             )
         }
     } else {
         val notchShape = if (dockedOnLeft) {
-            RoundedCornerShape(topEndPercent = 100, bottomEndPercent = 100)
+            RoundedCornerShape(topEnd = 1000.dp, bottomEnd = 1000.dp)
         } else {
-            RoundedCornerShape(topStartPercent = 100, bottomStartPercent = 100)
+            RoundedCornerShape(topStart = 1000.dp, bottomStart = 1000.dp)
         }
         Box(
             modifier = modifier
@@ -283,19 +338,21 @@ private fun PillTab(
                     .width(NOTCH_WIDTH_DP.dp)
                     .height(NOTCH_HEIGHT_DP.dp)
                     .alpha(idleAlpha)
-                    .border(0.5.dp, Color.White.copy(alpha = 0.35f), notchShape)
                     .clip(notchShape)
-                    .background(Color(0xCC1A1A1A)),
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.90f))
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                        shape = notchShape,
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    painter = painterResource(
-                        if (dockedOnLeft) R.drawable.ic_arrow_left
-                        else R.drawable.ic_arrow_right
-                    ),
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier.size(NOTCH_CHEVRON_SIZE_DP.dp),
+                Box(
+                    modifier = Modifier
+                        .width(3.5.dp)
+                        .height(20.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
                 )
             }
         }
@@ -314,67 +371,120 @@ private fun VerticalPill(
     onMapControls: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pillShape = RoundedCornerShape((PILL_WIDTH_DP / 2).dp)
-    Column(
+    val haptics = rememberExpressiveHaptics()
+    val pillShape = CircleShape
+
+    ExpressiveBlurSurface(
         modifier = modifier
             .padding(
-                start = if (dockedOnLeft) 12.dp else 0.dp,
-                end = if (dockedOnLeft) 0.dp else 12.dp,
+                start = if (dockedOnLeft) 10.dp else 0.dp,
+                end = if (dockedOnLeft) 0.dp else 10.dp,
             )
             .width(PILL_WIDTH_DP.dp)
-            .background(color = Color(0xCC1A1A1A), shape = pillShape)
-            .clip(pillShape),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+            .shadow(
+                elevation = 8.dp,
+                shape = pillShape,
+                ambientColor = Color.Black.copy(alpha = 0.28f),
+                spotColor = Color.Black.copy(alpha = 0.36f),
+            ),
+        shape = pillShape,
+        tintColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        scrimAlpha = 0.88f,
+        contentAlignment = Alignment.Center,
     ) {
-        IconButton(
-            onClick = onToggleFps,
-            modifier = Modifier.size(PILL_BUTTON_SIZE_DP.dp),
+        Column(
+            modifier = Modifier.padding(vertical = 6.dp, horizontal = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_fps),
-                contentDescription = null,
-                tint = if (showFps) MaterialTheme.colorScheme.primary else Color.White,
-                modifier = Modifier.size(20.dp),
+            QuickRailActionButton(
+                active = showFps,
+                iconRes = R.drawable.ic_fps,
+                contentDescription = stringResource(R.string.tile_fps_info),
+                isToggle = true,
+                onClick = {
+                    haptics.performToggle(!showFps)
+                    onToggleFps()
+                },
             )
-        }
-        IconButton(
-            onClick = onShowPanel,
-            modifier = Modifier.size(PILL_BUTTON_SIZE_DP.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.materialsymbols_ic_dashboard_rounded_filled),
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(20.dp),
+            QuickRailActionButton(
+                active = true,
+                iconRes = R.drawable.materialsymbols_ic_dashboard_rounded_filled,
+                contentDescription = stringResource(R.string.settings_title),
+                containerOverride = MaterialTheme.colorScheme.primaryContainer,
+                contentOverride = MaterialTheme.colorScheme.onPrimaryContainer,
+                isToggle = false,
+                onClick = {
+                    haptics.performSheetSnap()
+                    onShowPanel()
+                },
             )
-        }
-        IconButton(
-            onClick = onToggleLock,
-            modifier = Modifier.size(PILL_BUTTON_SIZE_DP.dp),
-        ) {
-            Icon(
-                painter = painterResource(
-                    if (isLocked) R.drawable.materialsymbols_ic_lock_rounded_filled
-                    else R.drawable.materialsymbols_ic_lock_open_rounded_filled
-                ),
-                contentDescription = null,
-                tint = if (isLocked) MaterialTheme.colorScheme.primary else Color.White,
-                modifier = Modifier.size(20.dp),
+            QuickRailActionButton(
+                active = isLocked,
+                iconRes = if (isLocked) {
+                    R.drawable.materialsymbols_ic_lock_rounded_filled
+                } else {
+                    R.drawable.materialsymbols_ic_lock_open_rounded_filled
+                },
+                contentDescription = stringResource(R.string.tile_gesture_lock),
+                isToggle = true,
+                onClick = {
+                    haptics.performToggle(!isLocked)
+                    onToggleLock()
+                },
             )
-        }
-        if (mapperEnabled) {
-            IconButton(
-                onClick = onMapControls,
-                modifier = Modifier.size(PILL_BUTTON_SIZE_DP.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.materialsymbols_ic_sports_esports_rounded_filled),
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp),
+            if (mapperEnabled) {
+                QuickRailActionButton(
+                    active = false,
+                    iconRes = R.drawable.materialsymbols_ic_sports_esports_rounded_filled,
+                    contentDescription = stringResource(R.string.mapper_map_controls),
+                    isToggle = false,
+                    onClick = {
+                        haptics.performConfirm()
+                        onMapControls()
+                    },
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun QuickRailActionButton(
+    active: Boolean,
+    iconRes: Int,
+    contentDescription: String?,
+    isToggle: Boolean,
+    onClick: () -> Unit,
+    containerOverride: Color? = null,
+    contentOverride: Color? = null,
+) {
+    val resolvedContainer = containerOverride ?: if (active) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.75f)
+    }
+    val resolvedContent = contentOverride ?: if (active) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+
+    ExpressiveMorphContainer(
+        active = active,
+        inactivePreset = ExpressiveShapePreset.SQUIRCLE,
+        activePreset = ExpressiveShapePreset.PILL,
+        containerColor = resolvedContainer,
+        contentColor = resolvedContent,
+        hapticOnClick = false,
+        onClick = onClick,
+        modifier = Modifier.size(PILL_BUTTON_SIZE_DP.dp),
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = contentDescription,
+            tint = resolvedContent,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }

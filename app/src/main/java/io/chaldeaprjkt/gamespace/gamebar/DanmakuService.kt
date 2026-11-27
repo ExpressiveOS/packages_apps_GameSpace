@@ -71,6 +71,8 @@ class DanmakuService @Inject constructor(
         gravity = Gravity.CENTER
         maxLines = 2
         setTextColor(Color.WHITE)
+        typeface = android.graphics.Typeface.create("google-sans-flex", android.graphics.Typeface.BOLD)
+        setShadowLayer(8f, 0f, 2f, 0xCC000000.toInt())
         isFocusable = false
         isClickable = false
     }
@@ -189,6 +191,13 @@ class DanmakuService @Inject constructor(
 
     private fun pushNotification() {
         val end = getOffsetForPosition().toFloat()
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            layoutParams.y = end.toInt()
+            updateViewLayoutSafely(layoutParams)
+            notificationOverlay.alpha = 1f
+            handler.postDelayed({ popNotification() }, DISPLAY_NOTIFICATION_DURATION)
+            return
+        }
         val start = end * (1 - SLIDE_ANIMATION_DISTANCE_FACTOR)
         overlayPositionAnimator = getPositionAnimator(APPEAR_ANIMATION_DURATION, start, end).also {
             it.addListener(onEnd = {
@@ -202,6 +211,16 @@ class DanmakuService @Inject constructor(
     }
 
     private fun popNotification() {
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            if (notificationStack.isEmpty()) {
+                removeViewSafely()
+            } else {
+                notificationOverlay.alpha = 0f
+                notificationOverlay.text = notificationStack.pop()
+                pushNotification()
+            }
+            return
+        }
         val start = getOffsetForPosition().toFloat()
         val end = start * (1 + SLIDE_ANIMATION_DISTANCE_FACTOR)
         overlayPositionAnimator =

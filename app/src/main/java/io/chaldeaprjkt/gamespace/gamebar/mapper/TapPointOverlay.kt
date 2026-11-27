@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2025-2026 AxionOS
+ * SPDX-FileCopyrightText: 2026 The ExpressiveOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +20,7 @@ package io.chaldeaprjkt.gamespace.gamebar.mapper
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -28,9 +29,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -38,14 +38,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,6 +55,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -68,7 +66,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.android.axion.compose.expressive.ExpressiveBlurSurface
+import com.android.axion.compose.expressive.ExpressiveFloatingToolbar
+import com.android.axion.compose.expressive.ExpressiveToolbarIconButton
+import com.android.axion.compose.expressive.ExpressiveToolbarPrimaryPill
+import com.android.axion.compose.expressive.rememberExpressiveHaptics
+import com.android.axion.compose.expressive.rememberExpressiveReducedMotion
+import com.android.axion.compose.theme.EmphasizedTabularStyle
 import io.chaldeaprjkt.gamespace.R
 import kotlin.math.roundToInt
 
@@ -87,6 +91,8 @@ fun TapPointOverlay(
     var nextId by remember { mutableIntStateOf((mappings.maxOfOrNull { it.id } ?: -1) + 1) }
     var selectedPointId by remember { mutableIntStateOf(-1) }
     val density = LocalDensity.current.density
+    val reducedMotion = rememberExpressiveReducedMotion()
+    val haptics = rememberExpressiveHaptics()
 
     if (points.isEmpty() && mappings.isNotEmpty() && containerSize != IntSize.Zero) {
         mappings.forEach { m ->
@@ -111,6 +117,7 @@ fun TapPointOverlay(
                 keyCode = evt.keyCode,
                 label = TapMapping.keyCodeToLabel(evt.keyCode),
             )
+            haptics.performConfirm()
         }
         onKeyCaptureConsumed()
     }
@@ -118,15 +125,36 @@ fun TapPointOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .onSizeChanged { containerSize = it }
+            .background(Color.Black.copy(alpha = 0.20f))
+            .onSizeChanged { containerSize = it },
     ) {
         points.forEachIndexed { index, point ->
             val isSelected = point.id == selectedPointId
             val pointScale by animateFloatAsState(
-                targetValue = if (isSelected) 1.15f else 1f,
-                animationSpec = tween(150),
-                label = "point_scale"
+                targetValue = if (isSelected && !reducedMotion) 1.14f else 1f,
+                animationSpec = if (reducedMotion) {
+                    snap()
+                } else {
+                    MaterialTheme.motionScheme.fastSpatialSpec()
+                },
+                label = "point_scale",
             )
+
+            val containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f)
+            }
+            val borderColor = if (isSelected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.outline
+            }
+            val textColor = if (isSelected) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            }
 
             Box(
                 contentAlignment = Alignment.Center,
@@ -134,93 +162,98 @@ fun TapPointOverlay(
                     .offset {
                         IntOffset(
                             (point.xPx - POINT_RADIUS_PX * density).roundToInt(),
-                            (point.yPx - POINT_RADIUS_PX * density).roundToInt()
+                            (point.yPx - POINT_RADIUS_PX * density).roundToInt(),
                         )
                     }
                     .size(POINT_SIZE_DP.dp)
                     .scale(pointScale)
                     .pointerInput(point.id) {
-                        detectDragGestures { change, dragAmount ->
+                        detectDragGestures(
+                            onDragStart = {
+                                selectedPointId = point.id
+                                haptics.performGestureStart()
+                            },
+                            onDragEnd = {
+                                haptics.performSheetSnap()
+                            },
+                        ) { change, dragAmount ->
                             change.consume()
-                            val updated = points[index].copy(
-                                xPx = (points[index].xPx + dragAmount.x)
-                                    .coerceIn(0f, containerSize.width.toFloat()),
-                                yPx = (points[index].yPx + dragAmount.y)
-                                    .coerceIn(0f, containerSize.height.toFloat()),
-                            )
-                            points[index] = updated
+                            val currentIdx = points.indexOfFirst { it.id == point.id }
+                            if (currentIdx != -1) {
+                                val updated = points[currentIdx].copy(
+                                    xPx = (points[currentIdx].xPx + dragAmount.x)
+                                        .coerceIn(0f, containerSize.width.toFloat()),
+                                    yPx = (points[currentIdx].yPx + dragAmount.y)
+                                        .coerceIn(0f, containerSize.height.toFloat()),
+                                )
+                                points[currentIdx] = updated
+                            }
                         }
                     }
                     .pointerInput(point.id) {
                         detectTapGestures(
                             onTap = {
+                                haptics.performStepTick()
                                 selectedPointId = point.id
                                 onRequestKeyCapture(point.id)
                             },
                             onLongPress = {
-                                points.removeAt(index)
-                                if (selectedPointId == point.id) selectedPointId = -1
-                            }
+                                haptics.performLongPress()
+                                val currentIdx = points.indexOfFirst { it.id == point.id }
+                                if (currentIdx != -1) {
+                                    points.removeAt(currentIdx)
+                                    if (selectedPointId == point.id) selectedPointId = -1
+                                }
+                            },
                         )
                     }
-                    .background(
-                        color = if (isSelected) Color(0xCC4FC3F7)
-                        else Color(0xCC212121),
-                        shape = CircleShape
-                    )
+                    .clip(CircleShape)
+                    .background(color = containerColor)
                     .border(
                         width = 2.dp,
-                        color = if (isSelected) Color(0xFF4FC3F7)
-                        else Color(0xFFBDBDBD),
-                        shape = CircleShape
-                    )
+                        color = borderColor,
+                        shape = CircleShape,
+                    ),
             ) {
                 Text(
                     text = if (point.keyCode == 0) "?" else point.label,
-                    color = Color.White,
-                    fontSize = 10.sp,
+                    color = textColor,
+                    style = EmphasizedTabularStyle(MaterialTheme.typography.labelMediumEmphasized),
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                 )
             }
         }
 
-        AnimatedVisibility(
-            visible = awaitingKey,
-            enter = fadeIn() + scaleIn(),
-            exit = fadeOut() + scaleOut(),
-            modifier = Modifier.align(Alignment.Center)
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .background(
-                        color = Color(0xDD000000),
-                        shape = RoundedCornerShape(16.dp)
-                    )
-                    .padding(horizontal = 32.dp, vertical = 20.dp)
+        if (reducedMotion) {
+            if (awaitingKey) {
+                AwaitingKeyBanner(modifier = Modifier.align(Alignment.Center))
+            }
+        } else {
+            AnimatedVisibility(
+                visible = awaitingKey,
+                enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()) +
+                    scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()),
+                exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
+                    scaleOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+                modifier = Modifier.align(Alignment.Center),
             ) {
-                Text(
-                    text = stringResource(R.string.mapper_press_button),
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
+                AwaitingKeyBanner()
             }
         }
 
-        Row(
+        ExpressiveFloatingToolbar(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 32.dp)
-                .background(
-                    color = Color(0xCC1A1A1A),
-                    shape = RoundedCornerShape(28.dp)
-                )
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(bottom = 28.dp),
+            frosted = true,
+            shape = CircleShape,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
         ) {
-            FilledIconButton(
+            ExpressiveToolbarIconButton(
+                icon = Icons.Rounded.Add,
+                contentDescription = stringResource(R.string.mapper_add_point),
+                selected = true,
                 onClick = {
                     val cx = containerSize.width / 2f
                     val cy = containerSize.height / 2f
@@ -229,40 +262,28 @@ fun TapPointOverlay(
                     selectedPointId = id
                     onRequestKeyCapture(id)
                 },
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-            ) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.mapper_add_point))
-            }
+            )
 
             if (selectedPointId != -1) {
-                FilledIconButton(
+                ExpressiveToolbarIconButton(
+                    icon = Icons.Rounded.Delete,
+                    contentDescription = stringResource(R.string.mapper_delete_point),
                     onClick = {
                         points.removeAll { it.id == selectedPointId }
                         selectedPointId = -1
                     },
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    ),
-                ) {
-                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.mapper_delete_point))
-                }
+                )
             }
 
-            FilledIconButton(
+            ExpressiveToolbarIconButton(
+                icon = Icons.Rounded.Close,
+                contentDescription = stringResource(android.R.string.cancel),
                 onClick = onCancel,
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                ),
-            ) {
-                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cancel))
-            }
+            )
 
-            FilledIconButton(
+            ExpressiveToolbarPrimaryPill(
+                label = stringResource(R.string.save),
+                icon = Icons.Rounded.Check,
                 onClick = {
                     if (containerSize.width > 0 && containerSize.height > 0) {
                         val result = points.map { p ->
@@ -277,14 +298,26 @@ fun TapPointOverlay(
                         onSave(result)
                     }
                 },
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-            ) {
-                Icon(Icons.Default.Check, contentDescription = stringResource(R.string.save))
-            }
+            )
         }
+    }
+}
+
+@Composable
+private fun AwaitingKeyBanner(modifier: Modifier = Modifier) {
+    ExpressiveBlurSurface(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        tintColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        scrimAlpha = 0.90f,
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = stringResource(R.string.mapper_press_button),
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.bodyLargeEmphasized,
+            modifier = Modifier.padding(horizontal = 28.dp, vertical = 18.dp),
+        )
     }
 }
 

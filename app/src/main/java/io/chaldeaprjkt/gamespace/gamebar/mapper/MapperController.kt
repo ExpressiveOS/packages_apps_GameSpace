@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.android.axion.compose.lifecycle.repeatWhenAttached
+import com.android.axion.compose.theme.AxionTheme
 import com.google.gson.Gson
 
 data class KeyCaptureEvent(val pointId: Int, val keyCode: Int)
@@ -98,9 +99,9 @@ class MapperController(
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
                     setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                     setContent {
-                        MaterialExpressiveTheme(
-                            colorScheme = dynamicDarkColorScheme(context),
-                            motionScheme = MotionScheme.expressive(),
+                        AxionTheme(
+                            darkTheme = true,
+                            applySystemBars = false,
                         ) {
                             TapPointOverlay(
                                 mappings = mappings,

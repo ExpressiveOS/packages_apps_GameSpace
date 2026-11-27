@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2025-2026 AxionOS
+ * SPDX-FileCopyrightText: 2026 The ExpressiveOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,32 +19,46 @@
 
 package io.chaldeaprjkt.gamespace.gamebar
 
-import android.annotation.SuppressLint
 import android.app.ActivityTaskManager
-import android.content.*
+import android.content.Context
 import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Bundle
 import android.os.Handler
 import android.os.Process
+import android.os.SystemClock
 import android.os.UserHandle
 import android.provider.Settings
-import android.view.*
+import android.view.Gravity
+import android.view.HapticFeedbackConstants
+import android.view.View
+import android.view.WindowManager
 import android.window.TaskFpsCallback
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.OnBackPressedDispatcherOwner
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -51,18 +66,25 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.repeatOnLifecycle
+import com.android.axion.compose.expressive.isExpressiveReducedMotionEnabled
+import com.android.axion.compose.expressive.isExpressiveWindowBlurSupported
+import com.android.axion.compose.expressive.rememberExpressiveReducedMotion
 import com.android.axion.compose.lifecycle.repeatWhenAttached
+import com.android.axion.compose.theme.AxionTheme
 import com.android.axion.platform.AxPlatformClient
 import io.chaldeaprjkt.gamespace.BuildFlags
-import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.AppSettings
 import io.chaldeaprjkt.gamespace.data.SystemSettings
-import io.chaldeaprjkt.gamespace.gamebar.brightness.*
-import io.chaldeaprjkt.gamespace.gamebar.fps.*
+import io.chaldeaprjkt.gamespace.gamebar.brightness.BrightnessInteractor
+import io.chaldeaprjkt.gamespace.gamebar.fps.FpsInteractor
 import io.chaldeaprjkt.gamespace.gamebar.mapper.MapperController
-import io.chaldeaprjkt.gamespace.gamebar.tiles.*
-import io.chaldeaprjkt.gamespace.utils.*
+import io.chaldeaprjkt.gamespace.gamebar.tiles.TileRepository
+import io.chaldeaprjkt.gamespace.utils.GameModeUtils
+import io.chaldeaprjkt.gamespace.utils.ScreenUtils
+import io.chaldeaprjkt.gamespace.utils.statusbarHeight
 import java.math.RoundingMode
 import java.text.DecimalFormat
 
@@ -89,6 +111,7 @@ class GameSidebar(
     private var safeArea = 0
     private var shouldClose = false
     private var panelShowing = false
+    private var fpsCallbackRegistered = false
 
     private lateinit var gameBarView: ComposeView
     private var panelView: View? = null
@@ -116,11 +139,12 @@ class GameSidebar(
     private var pillExpanded = false
     private val pillExpandedState = mutableStateOf(false)
     private val barTopState = mutableIntStateOf(0)
+    private val sessionStartElapsedMsState = mutableLongStateOf(SystemClock.elapsedRealtime())
     private val taskManager by lazy { ActivityTaskManager.getService() }
 
     private val taskFpsCallback = object : TaskFpsCallback() {
         override fun onFpsReported(fps: Float) {
-            if (::gameBarView.isInitialized && gameBarView.isAttachedToWindow) {
+            if (::gameBarView.isInitialized && fps.isFinite() && fps >= 0f) {
                 val formatted = DecimalFormat("#").apply {
                     roundingMode = RoundingMode.HALF_EVEN
                 }.format(fps)
@@ -134,71 +158,93 @@ class GameSidebar(
     }
 
     fun onCreate() {
+        tileRepository.onDismissPanelRequested = {
+            handler.post { requestDismissPanel() }
+        }
+        tileRepository.onEnterMapperRequested = {
+            handler.post { enterMapperEdit() }
+        }
+        tileRepository.onFpsVisibilityChanged = { visible ->
+            handler.post {
+                showFpsState.value = visible
+                updateFpsTracking()
+            }
+        }
+        tileRepository.onGestureLockChanged = { locked ->
+            handler.post { setGestureLock(locked) }
+        }
+
         gameBarView = ComposeView(context).apply {
             repeatWhenAttached {
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
-                    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+                    setViewCompositionStrategy(
+                        ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+                    )
                     setContent {
                         CompositionLocalProvider(
                             LocalOnBackPressedDispatcherOwner provides noOpBackDispatcherOwner,
                         ) {
-                            MaterialExpressiveTheme(
-                            colorScheme = dynamicDarkColorScheme(context),
-                            motionScheme = MotionScheme.expressive(),
-                        ) {
-                            GameBarView(
-                                showFps = showFpsState.value,
-                                fpsText = fpsTextState.value,
-                                isLocked = isLockedState.value,
-                                isIdle = isIdleState.value,
-                                idleAlpha = (appSettings.iconIdleAlpha / 100f).coerceAtLeast(0.05f),
-                                dockedOnLeft = dockedOnLeftState.value,
-                                mapperEnabled = BuildFlags.MAPPER_ENABLED,
-                                onShowPanel = { handler.post { showPanel() } },
-                                onMapControls = { handler.post { enterMapperEdit() } },
-                                onToggleLock = {
-                                    setGestureLock(!isLockedState.value)
-                                    scheduleIdle()
-                                },
-                                onToggleFps = {
-                                    showFpsState.value = !showFpsState.value
-                                    appSettings.showFps = showFpsState.value
-                                    updateFpsTracking()
-                                    scheduleIdle()
-                                },
-                                pillExpanded = pillExpandedState.value,
-                                barTopPx = barTopState.intValue,
-                                onExpanded = { handler.post { setPillExpanded(true) } },
-                                onCollapsed = {
-                                    handler.post { setPillExpanded(false) }
-                                    scheduleIdle()
-                                },
-                                collapseRequestKey = collapseRequestState.intValue,
-                                onDragStart = {
-                                    val loc = IntArray(2)
-                                    gameBarView.getLocationOnScreen(loc)
-                                    gameBarLayoutParam.gravity = Gravity.TOP or Gravity.START
-                                    gameBarLayoutParam.x = loc[0]
-                                    gameBarLayoutParam.y = loc[1]
-                                    runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
-                                    Pair(loc[0], loc[1])
-                                },
-                                onDragUpdate = { x, y ->
-                                    gameBarLayoutParam.x = x
-                                    gameBarLayoutParam.y = y
-                                    runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
-                                },
-                                onDragEnd = { x, y ->
-                                    circleOnLeft = x < halfWidth
-                                    dockedOnLeftState.value = circleOnLeft
-                                    appSettings.x = if (circleOnLeft) -1 else 1
-                                    appSettings.y = y
-                                    dockGameBar()
-                                    runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
-                                    scheduleIdle()
-                                },
-                            )
-                        }
+                            AxionTheme(
+                                darkTheme = true,
+                                applySystemBars = false,
+                            ) {
+                                GameBarView(
+                                    showFps = showFpsState.value,
+                                    fpsText = fpsTextState.value,
+                                    isLocked = isLockedState.value,
+                                    isIdle = isIdleState.value,
+                                    idleAlpha = (appSettings.iconIdleAlpha / 100f).coerceAtLeast(0.05f),
+                                    dockedOnLeft = dockedOnLeftState.value,
+                                    mapperEnabled = BuildFlags.MAPPER_ENABLED,
+                                    onShowPanel = { handler.post { showPanel() } },
+                                    onMapControls = { handler.post { enterMapperEdit() } },
+                                    onToggleLock = {
+                                        val next = !isLockedState.value
+                                        appSettings.lockGesture = next
+                                        setGestureLock(next)
+                                        scheduleIdle()
+                                    },
+                                    onToggleFps = {
+                                        val next = !showFpsState.value
+                                        showFpsState.value = next
+                                        appSettings.showFps = next
+                                        tileRepository.syncFpsInfoState(next)
+                                        updateFpsTracking()
+                                        scheduleIdle()
+                                    },
+                                    pillExpanded = pillExpandedState.value,
+                                    barTopPx = barTopState.intValue,
+                                    onExpanded = { handler.post { setPillExpanded(true) } },
+                                    onCollapsed = {
+                                        handler.post { setPillExpanded(false) }
+                                        scheduleIdle()
+                                    },
+                                    collapseRequestKey = collapseRequestState.intValue,
+                                    onDragStart = {
+                                        val loc = IntArray(2)
+                                        gameBarView.getLocationOnScreen(loc)
+                                        gameBarLayoutParam.gravity = Gravity.TOP or Gravity.START
+                                        gameBarLayoutParam.x = loc[0]
+                                        gameBarLayoutParam.y = loc[1]
+                                        runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
+                                        Pair(loc[0], loc[1])
+                                    },
+                                    onDragUpdate = { x, y ->
+                                        gameBarLayoutParam.x = x
+                                        gameBarLayoutParam.y = y
+                                        runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
+                                    },
+                                    onDragEnd = { x, y ->
+                                        circleOnLeft = x < halfWidth
+                                        dockedOnLeftState.value = circleOnLeft
+                                        appSettings.x = if (circleOnLeft) -1 else 1
+                                        appSettings.y = y
+                                        dockGameBar()
+                                        runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
+                                        scheduleIdle()
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -215,6 +261,8 @@ class GameSidebar(
     }
 
     fun onGameStart(packageName: String) {
+        shouldClose = false
+        sessionStartElapsedMsState.longValue = SystemClock.elapsedRealtime()
         if (BuildFlags.MAPPER_ENABLED) {
             mapperController.onGameStart(packageName)
         }
@@ -244,6 +292,7 @@ class GameSidebar(
 
     fun setGestureLock(value: Boolean) {
         isLockedState.value = value
+        tileRepository.syncGestureLockState(value)
         Settings.Secure.putIntForUser(
             context.contentResolver,
             "ax_gaming_gesture_lock",
@@ -268,6 +317,7 @@ class GameSidebar(
 
     private fun showPanel() {
         if (panelShowing) return
+        collapseVerticalPill()
         panelShowing = true
         panelDismissing.value = false
         handler.removeCallbacks(idleRunnable)
@@ -277,6 +327,16 @@ class GameSidebar(
         fpsInteractor.start()
         brightnessInteractor.start()
 
+        // Apply Kawase cross-window blur behind the expanded dashboard ONLY while open,
+        // keeping zero blur / zero GPU compositing bloat during active gameplay.
+        val canBlur = isExpressiveWindowBlurSupported(context)
+        panelLayoutParam.setBlurBehindRadius(if (canBlur) PANEL_BLUR_BEHIND_RADIUS_PX else 0)
+        panelLayoutParam.flags = if (canBlur) {
+            panelLayoutParam.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+        } else {
+            panelLayoutParam.flags and WindowManager.LayoutParams.FLAG_BLUR_BEHIND.inv()
+        }
+
         val pv = createPanelView()
         panelView = pv
 
@@ -285,6 +345,7 @@ class GameSidebar(
             Process.setThreadGroupAndCpuset(Process.myTid(), Process.THREAD_GROUP_SYSTEM)
             Process.setProcessGroup(Process.myPid(), Process.THREAD_GROUP_SYSTEM)
             wm.addView(pv, panelLayoutParam)
+            pv.performHapticFeedback(HapticFeedbackConstants.GESTURE_END)
             gameBarView.visibility = View.GONE
         } catch (_: Exception) {
             brightnessInteractor.dispose()
@@ -339,13 +400,15 @@ class GameSidebar(
         return ComposeView(context).apply {
             repeatWhenAttached {
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
-                    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+                    setViewCompositionStrategy(
+                        ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+                    )
                     setContent {
-                        MaterialExpressiveTheme(
-                            colorScheme = dynamicDarkColorScheme(context),
-                            motionScheme = MotionScheme.expressive(),
+                        AxionTheme(
+                            darkTheme = true,
+                            applySystemBars = false,
                         ) {
-                            PanelContent()
+                            PanelOverlayHost()
                         }
                     }
                 }
@@ -354,22 +417,37 @@ class GameSidebar(
     }
 
     @Composable
-    private fun PanelContent() {
+    private fun PanelOverlayHost() {
         val apps = remember { getQuickStartApps(context) }
         val dismissing by panelDismissing
+        val reducedMotion = rememberExpressiveReducedMotion()
 
-        var entered by remember { mutableStateOf(false) }
+        var entered by remember { mutableStateOf(reducedMotion) }
         LaunchedEffect(Unit) { entered = true }
+
+        LaunchedEffect(dismissing, reducedMotion) {
+            if (dismissing && reducedMotion) {
+                removePanelAndRestoreCircle()
+            }
+        }
 
         val show = entered && !dismissing
         val slideSign = if (circleOnLeft) -1f else 1f
 
+        val spatialSpec = if (reducedMotion) {
+            snap()
+        } else {
+            MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+        }
+        val effectsSpec = if (reducedMotion) {
+            snap()
+        } else {
+            MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+        }
+
         val slideOffset by animateFloatAsState(
-            targetValue = if (show) 0f else slideSign * 400f,
-            animationSpec = tween(
-                durationMillis = if (show) 350 else 250,
-                easing = if (show) FastOutSlowInEasing else FastOutLinearInEasing,
-            ),
+            targetValue = if (show) 0f else slideSign * 360f,
+            animationSpec = spatialSpec,
             label = "panel_slide",
             finishedListener = {
                 if (dismissing) handler.post { removePanelAndRestoreCircle() }
@@ -378,16 +456,13 @@ class GameSidebar(
 
         val panelAlpha by animateFloatAsState(
             targetValue = if (show) 1f else 0f,
-            animationSpec = tween(if (show) 280 else 180),
+            animationSpec = effectsSpec,
             label = "panel_alpha",
         )
 
         val panelScale by animateFloatAsState(
-            targetValue = if (show) 1f else 0.88f,
-            animationSpec = tween(
-                durationMillis = if (show) 350 else 220,
-                easing = if (show) FastOutSlowInEasing else FastOutLinearInEasing,
-            ),
+            targetValue = if (show) 1f else 0.90f,
+            animationSpec = spatialSpec,
             label = "panel_scale",
         )
 
@@ -402,8 +477,8 @@ class GameSidebar(
         val screenHeightDp = with(density) { safeHeight.toDp() }
         val spaceBelow = (screenHeightDp - barTopDp - navBottomDp - 16.dp).coerceAtLeast(0.dp)
         val spaceAbove = (barTopDp - navBottomDp - 16.dp).coerceAtLeast(0.dp)
-        val bottomAligned = spaceBelow < 240.dp && spaceAbove > spaceBelow
-        val panelMaxHeight = (if (bottomAligned) spaceAbove else spaceBelow).coerceIn(240.dp, 520.dp)
+        val bottomAligned = spaceBelow < 260.dp && spaceAbove > spaceBelow
+        val panelMaxHeight = (if (bottomAligned) spaceAbove else spaceBelow).coerceIn(260.dp, 560.dp)
         val alignment = when {
             bottomAligned && circleOnLeft -> Alignment.BottomStart
             bottomAligned && !circleOnLeft -> Alignment.BottomEnd
@@ -416,6 +491,7 @@ class GameSidebar(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.24f * panelAlpha.coerceIn(0f, 1f)))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -451,6 +527,9 @@ class GameSidebar(
                     systemSettings = settings,
                     tileRepository = tileRepository,
                     maxHeight = panelMaxHeight,
+                    sessionStartElapsedMs = sessionStartElapsedMsState.longValue,
+                    liveFpsText = fpsTextState.value,
+                    onDismissPanel = { requestDismissPanel() },
                 )
             }
         }
@@ -478,13 +557,19 @@ class GameSidebar(
 
     private fun collapseVerticalPill() {
         if (!pillExpanded) return
+        setPillExpanded(false)
         collapseRequestState.intValue = collapseRequestState.intValue + 1
     }
 
     private fun updateFpsTracking() {
         if (showFpsState.value) {
-            taskManager?.focusedRootTaskInfo?.taskId?.let {
-                wm.registerTaskFpsCallback(it, Runnable::run, taskFpsCallback)
+            if (!fpsCallbackRegistered) {
+                taskManager?.focusedRootTaskInfo?.taskId?.let {
+                    runCatching {
+                        wm.registerTaskFpsCallback(it, Runnable::run, taskFpsCallback)
+                        fpsCallbackRegistered = true
+                    }
+                }
             }
         } else {
             stopFpsTracking()
@@ -492,6 +577,8 @@ class GameSidebar(
     }
 
     private fun stopFpsTracking() {
+        if (!fpsCallbackRegistered) return
+        fpsCallbackRegistered = false
         runCatching { wm.unregisterTaskFpsCallback(taskFpsCallback) }
     }
 
@@ -504,14 +591,20 @@ class GameSidebar(
 
     private fun initActions() {
         if (shouldClose) return
+        val reducedMotion = isExpressiveReducedMotionEnabled(context)
         gameBarView.visibility = View.VISIBLE
-        gameBarView.animate().alpha(1f).setDuration(300).start()
+        if (reducedMotion) {
+            gameBarView.alpha = 1f
+        } else {
+            gameBarView.animate().alpha(1f).setDuration(250).start()
+        }
         circleOnLeft = appSettings.x < 0
         dockedOnLeftState.value = circleOnLeft
         gameBarLayoutParam.y = appSettings.y
         dockGameBar()
         runCatching { wm.updateViewLayout(gameBarView, gameBarLayoutParam) }
         showFpsState.value = appSettings.showFps
+        tileRepository.syncFpsInfoState(appSettings.showFps)
         updateFpsTracking()
         setGestureLock(appSettings.lockGesture)
         scheduleIdle()
@@ -528,15 +621,26 @@ class GameSidebar(
     }
 
     private fun enterMapperEdit() {
+        val reducedMotion = isExpressiveReducedMotionEnabled(context)
         forceRemovePanel()
-        gameBarView.animate().alpha(0f).setDuration(150).withEndAction {
+        collapseVerticalPill()
+        if (reducedMotion) {
+            gameBarView.alpha = 0f
             gameBarView.visibility = View.GONE
-        }.start()
+        } else {
+            gameBarView.animate().alpha(0f).setDuration(150).withEndAction {
+                gameBarView.visibility = View.GONE
+            }.start()
+        }
         mapperController.onEditStarted = null
         mapperController.onEditFinished = {
             handler.post {
                 gameBarView.visibility = View.VISIBLE
-                gameBarView.animate().alpha(1f).setDuration(200).start()
+                if (isExpressiveReducedMotionEnabled(context)) {
+                    gameBarView.alpha = 1f
+                } else {
+                    gameBarView.animate().alpha(1f).setDuration(200).start()
+                }
                 scheduleIdle()
             }
         }
@@ -552,7 +656,7 @@ class GameSidebar(
     private fun getQuickStartApps(context: Context): List<AppInfo> {
         val appList = mutableListOf<AppInfo>()
         val packageManager = context.packageManager
-        if (appSettings.quickStartApps.isNullOrEmpty() == false) {
+        if (!appSettings.quickStartApps.isNullOrEmpty()) {
             val packages = appSettings.quickStartApps.split(",")
             for (pkg in packages) {
                 try {
@@ -594,5 +698,6 @@ class GameSidebar(
 
     companion object {
         private const val IDLE_TIMEOUT_MS = 3000L
+        private const val PANEL_BLUR_BEHIND_RADIUS_PX = 28
     }
 }

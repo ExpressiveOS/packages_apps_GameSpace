@@ -58,7 +58,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.android.axion.compose.expressive.ExpressiveBlurSurface
+import com.android.axion.compose.expressive.rememberExpressiveHaptics
+import com.android.axion.compose.expressive.rememberExpressiveReducedMotion
 import com.android.axion.compose.lifecycle.repeatWhenAttached
+import com.android.axion.compose.theme.AxionTheme
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.scopes.ServiceScoped
 import io.chaldeaprjkt.gamespace.R
@@ -227,13 +231,7 @@ class CallListener @Inject constructor(
                         ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
                     )
                     setContent {
-                        val isDark = isSystemInDarkTheme()
-                        val scheme = if (isDark) dynamicDarkColorScheme(context)
-                                     else dynamicLightColorScheme(context)
-                        MaterialExpressiveTheme(
-                            colorScheme = scheme,
-                            motionScheme = MotionScheme.expressive(),
-                        ) {
+                        AxionTheme(applySystemBars = false) {
                             CallOverlay(
                                 onAccept = {
                                     telecomManager.acceptRingingCall()
@@ -305,25 +303,35 @@ fun CallOverlay(
     var isVisible by remember { mutableStateOf(false) }
     var isDismissing by remember { mutableStateOf(false) }
     var btnPressed by remember { mutableStateOf(false) }
+    val reducedMotion = rememberExpressiveReducedMotion()
+    val haptics = rememberExpressiveHaptics()
 
     val scale by animateFloatAsState(
         targetValue = when {
             isDismissing -> 0f
-            isVisible -> 1f
+            isVisible || reducedMotion -> 1f
             else -> 0f
         },
-        animationSpec = tween(250, easing = FastOutSlowInEasing),
+        animationSpec = if (reducedMotion) {
+            snap()
+        } else {
+            MaterialTheme.motionScheme.fastSpatialSpec()
+        },
         label = "shrink_scale"
     )
 
     val fadeAlpha by animateFloatAsState(
         targetValue = if (isDismissing) 0f else 1f,
-        animationSpec = tween(250),
+        animationSpec = if (reducedMotion) {
+            snap()
+        } else {
+            MaterialTheme.motionScheme.fastEffectsSpec()
+        },
         label = "fade"
     )
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
+    val animatedPulseAlpha by infiniteTransition.animateFloat(
         initialValue = 0.6f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
@@ -332,10 +340,15 @@ fun CallOverlay(
         ),
         label = "pulse_alpha"
     )
+    val pulseAlpha = if (reducedMotion) 1f else animatedPulseAlpha
 
     val buttonScale by animateFloatAsState(
-        targetValue = if (btnPressed) 0.85f else 1f,
-        animationSpec = tween(100, easing = LinearOutSlowInEasing),
+        targetValue = if (btnPressed && !reducedMotion) 0.88f else 1f,
+        animationSpec = if (reducedMotion) {
+            snap()
+        } else {
+            MaterialTheme.motionScheme.fastSpatialSpec()
+        },
         label = "button_press"
     )
 
@@ -392,17 +405,19 @@ fun CallOverlay(
             ),
         contentAlignment = if (alignRight) Alignment.TopEnd else Alignment.TopStart
     ) {
+        ExpressiveBlurSurface(
+            modifier = Modifier.shadow(8.dp, CircleShape),
+            shape = CircleShape,
+            tintColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                .padding(12.dp)
-                .shadow(8.dp, CircleShape)
+            modifier = Modifier.padding(12.dp),
         ) {
             IconButton(
                 onClick = {
+                    haptics.performConfirm()
                     btnPressed = true
                     onReject()
                     isDismissing = true
@@ -411,12 +426,12 @@ fun CallOverlay(
                     .size(56.dp)
                     .scale(buttonScale)
                     .clip(CircleShape)
-                    .background(Color(0xFFEF5350))
+                    .background(MaterialTheme.colorScheme.error)
             ) {
                 Icon(
                     imageVector = Icons.Filled.Close,
                     contentDescription = stringResource(R.string.cd_reject),
-                    tint = Color.White.copy(alpha = pulseAlpha),
+                    tint = MaterialTheme.colorScheme.onError.copy(alpha = pulseAlpha),
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -427,6 +442,7 @@ fun CallOverlay(
             ) {
                 IconButton(
                     onClick = {
+                        haptics.performConfirm()
                         btnPressed = true
                         onAccept()
                         isDismissing = true
@@ -436,12 +452,12 @@ fun CallOverlay(
                         .graphicsLayer { alpha = acceptAlpha }
                         .scale(buttonScale)
                         .clip(CircleShape)
-                        .background(Color(0xFF4CAF50))
+                        .background(MaterialTheme.colorScheme.primary)
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Call,
                         contentDescription = stringResource(R.string.cd_accept),
-                        tint = Color.White.copy(alpha = pulseAlpha),
+                        tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = pulseAlpha),
                         modifier = Modifier.size(28.dp)
                     )
                 }
@@ -449,6 +465,7 @@ fun CallOverlay(
                 callerPhoto?.let { photo ->
                     IconButton(
                         onClick = {
+                            haptics.performConfirm()
                             btnPressed = true
                             onAccept()
                             isDismissing = true
@@ -477,6 +494,7 @@ fun CallOverlay(
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .clickable {
+                        haptics.performStepTick()
                         isDismissing = true
                         onDismiss()
                     },
@@ -489,6 +507,7 @@ fun CallOverlay(
                     modifier = Modifier.size(20.dp)
                 )
             }
+        }
         }
     }
 }

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?><!--
     Copyright (C) Chaldeaprjkt
+    SPDX-FileCopyrightText: 2026 The ExpressiveOS Project
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -16,13 +17,7 @@
 
 <resources>
 
-    <style name="GameSpaceTheme" parent="Theme.SubSettingsBase.Expressive">
-        <!-- For AndroidX AlertDialog - legacy for expressive fix -->
-        <item name="alertDialogTheme">@style/Theme.AlertDialog.SettingsLib</item>
-        <item name="preferenceTheme">@style/PreferenceTheme.SettingsLib</item>
-        <item name="android:switchStyle">@style/Switch.SettingsLib</item>
-        <item name="switchStyle">@style/SwitchCompat.SettingsLib</item>
-    </style>
+    <style name="GameSpaceTheme" parent="Theme.SubSettingsBase.Expressive" />
 
     <style name="GameSpaceTheme.Panel" parent="GameSpaceTheme">
         <item name="cardBackgroundColor">@color/surface</item>

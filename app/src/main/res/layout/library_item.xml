@@ -2,22 +2,27 @@
 <!--
      SPDX-FileCopyrightText: crDroid Android Project
      SPDX-FileCopyrightText: Chaldeaprjkt
+     SPDX-FileCopyrightText: 2026 The ExpressiveOS Project
      SPDX-License-Identifier: Apache-2.0
 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.android.settingslib.widget.DrawableStateLinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/app_item"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:minHeight="?android:attr/listPreferredItemHeightSmall"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingHorizontal="12dp"
-    android:paddingVertical="4dp">
+    android:paddingStart="?android:attr/listPreferredItemPaddingStart"
+    android:paddingEnd="?android:attr/listPreferredItemPaddingEnd"
+    android:paddingVertical="12dp"
+    android:background="@drawable/settingslib_round_background_stateful">
 
     <ImageView
         android:id="@android:id/icon"
-        android:layout_width="@android:dimen/app_icon_size"
-        android:layout_height="@android:dimen/app_icon_size"
-        android:layout_margin="12dp"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginEnd="16dp"
         android:scaleType="fitCenter" />
 
     <LinearLayout
@@ -26,28 +31,36 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:orientation="vertical"
-        android:paddingHorizontal="6dp">
+        android:paddingEnd="8dp">
 
         <TextView
             android:id="@android:id/title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textAppearance="?android:textAppearanceMedium" />
+            android:textAppearance="?android:attr/textAppearanceListItem"
+            android:maxLines="1"
+            android:ellipsize="end" />
 
         <TextView
             android:id="@android:id/summary"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textAppearance="?android:textAppearanceSmall" />
+            android:layout_marginTop="2dp"
+            android:textAppearance="?android:attr/textAppearanceListItemSecondary"
+            android:textColor="?android:attr/textColorSecondary"
+            android:maxLines="1"
+            android:ellipsize="end" />
 
     </LinearLayout>
 
     <ImageView
         android:id="@+id/launch_icon"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:layout_margin="12dp"
-        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:layout_marginEnd="8dp"
+        android:padding="9dp"
+        android:background="@drawable/bg_library_action_play_pill"
+        android:tint="@color/settingslib_materialColorOnPrimaryContainer"
         android:clickable="true"
         android:focusable="true"
         android:contentDescription="@string/launch_game"
@@ -56,14 +69,15 @@
 
     <ImageView
         android:id="@+id/settings_icon"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:layout_margin="12dp"
-        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:padding="9dp"
+        android:background="@drawable/bg_library_action_gear_pill"
+        android:tint="@color/settingslib_materialColorOnSurfaceVariant"
         android:clickable="true"
         android:focusable="true"
         android:contentDescription="@string/per_app_title"
         android:scaleType="fitCenter"
         android:src="@drawable/ic_gear" />
 
-</LinearLayout>
+</com.android.settingslib.widget.DrawableStateLinearLayout>

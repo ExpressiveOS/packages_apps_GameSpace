@@ -24,6 +24,7 @@ import android.content.pm.PackageManager
 import android.os.UserHandle
 import android.provider.Settings
 import android.util.AttributeSet
+import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.activity.result.ActivityResult
 import androidx.preference.Preference
@@ -134,10 +135,14 @@ class AppListPreferences @JvmOverloads constructor(context: Context, attrs: Attr
                 val canLaunch = pm.getLaunchIntentForPackage(game.packageName) != null
                 holder.findViewById(R.id.launch_icon)?.let { play ->
                     play.visibility = if (canLaunch) View.VISIBLE else View.GONE
-                    play.setOnClickListener { launchGame(game.packageName) }
+                    play.setOnClickListener { v ->
+                        v.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                        launchGame(game.packageName)
+                    }
                 }
 
-                holder.findViewById(R.id.settings_icon)?.setOnClickListener {
+                holder.findViewById(R.id.settings_icon)?.setOnClickListener { v ->
+                    v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                     if (::registeredAppClickAction.isInitialized) {
                         registeredAppClickAction(game.packageName)
                     }

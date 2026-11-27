@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Copyright (C) 2026 crDroid Android Project
+    SPDX-FileCopyrightText: 2026 The ExpressiveOS Project
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -18,10 +19,15 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:layout_marginHorizontal="16dp"
+    android:layout_marginTop="8dp"
+    android:layout_marginBottom="12dp"
+    android:background="@drawable/bg_per_app_header_card"
     android:orientation="vertical"
     android:gravity="center"
     android:paddingTop="24dp"
-    android:paddingBottom="24dp">
+    android:paddingBottom="24dp"
+    android:paddingHorizontal="20dp">
 
     <ImageView
         android:id="@android:id/icon"
@@ -33,8 +39,10 @@
         android:id="@android:id/title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textAppearance="?android:attr/textAppearanceMedium"
-        android:textSize="20sp"
+        android:textAppearance="?android:attr/textAppearanceListItem"
+        android:textSize="22sp"
+        android:fontFamily="google-sans-flex"
+        android:textStyle="bold"
         android:textColor="?android:attr/textColorPrimary"
         android:singleLine="true"
         android:ellipsize="end" />

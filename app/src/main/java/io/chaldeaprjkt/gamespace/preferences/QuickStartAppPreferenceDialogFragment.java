@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2023-2024 the risingOS Android Project           
+ * Copyright (C) 2023-2024 the risingOS Android Project
+ * SPDX-FileCopyrightText: 2026 The ExpressiveOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,19 +16,13 @@
  */
 package io.chaldeaprjkt.gamespace.preferences;
 
-import android.app.Dialog;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.os.Bundle;
-import android.provider.Settings;
-import android.view.ContextThemeWrapper;
-import android.view.ViewGroup;
-import android.widget.ListView;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.preference.PreferenceDialogFragmentCompat;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -40,8 +35,7 @@ public class QuickStartAppPreferenceDialogFragment extends PreferenceDialogFragm
         void saveQuickStartApps(String apps);
     }
 
-    private Set<String> selectedPackages = new HashSet<>();
-
+    private final Set<String> selectedPackages = new HashSet<>();
     private QuickStartAppListener listener;
 
     public void setListener(QuickStartAppListener listener) {
@@ -66,55 +60,64 @@ public class QuickStartAppPreferenceDialogFragment extends PreferenceDialogFragm
 
     @Override
     protected void onPrepareDialogBuilder(@NonNull AlertDialog.Builder builder) {
-        QuickStartAppPreference preference = (QuickStartAppPreference) getPreference();
-        Context context = getContext();
+        final QuickStartAppPreference preference = (QuickStartAppPreference) getPreference();
+        final Context context = getContext();
         if (preference == null || context == null || listener == null) {
             return;
         }
 
-        String savedApps = listener.getSavedQuickStartApps();
+        selectedPackages.clear();
+        final String savedApps = listener.getSavedQuickStartApps();
         if (savedApps != null && !savedApps.isEmpty()) {
-            String[] savedAppsArray = savedApps.split(",");
-            for (String app : savedAppsArray) {
-                selectedPackages.add(app);
+            for (String app : savedApps.split(",")) {
+                if (!app.isEmpty()) {
+                    selectedPackages.add(app);
+                }
             }
         }
 
-        boolean[] checkedItems = new boolean[preference.getAppNames().length];
-        String[] appPackageNames = preference.getAppPackageNames();
+        final String[] appNames = preference.getAppNames();
+        final String[] appPackageNames = preference.getAppPackageNames();
 
+        builder.setTitle(R.string.quick_start_apps_title)
+                .setNegativeButton(android.R.string.cancel, null);
+
+        if (!preference.isAppsLoaded() && appNames.length == 0) {
+            builder.setMessage(R.string.quick_start_apps_loading);
+            return;
+        }
+
+        final boolean[] checkedItems = new boolean[appNames.length];
         for (int i = 0; i < appPackageNames.length; i++) {
             checkedItems[i] = selectedPackages.contains(appPackageNames[i]);
         }
 
-        builder.setTitle(R.string.quick_start_apps_title)
-            .setMultiChoiceItems(preference.getAppNames(), checkedItems, (dialog, which, isChecked) -> {
-                String selectedApp = appPackageNames[which];
-                if (isChecked) {
-                    selectedPackages.add(selectedApp);
-                } else {
-                    selectedPackages.remove(selectedApp);
-                }
-            })
-            .setPositiveButton(android.R.string.ok, (dialog, which) -> saveSelectedApps())
-            .setNegativeButton(android.R.string.cancel, null);
+        builder.setMultiChoiceItems(appNames, checkedItems, (dialog, which, isChecked) -> {
+                    final String selectedApp = appPackageNames[which];
+                    if (isChecked) {
+                        selectedPackages.add(selectedApp);
+                    } else {
+                        selectedPackages.remove(selectedApp);
+                    }
+                })
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> saveSelectedApps());
     }
 
     @Override
     public void onDialogClosed(boolean positiveResult) {}
 
     private void saveSelectedApps() {
-        String[] selectedArray = selectedPackages.toArray(new String[0]);
-        StringBuilder sb = new StringBuilder();
+        final String[] selectedArray = selectedPackages.toArray(new String[0]);
+        final StringBuilder sb = new StringBuilder();
         for (int i = 0; i < selectedArray.length; i++) {
             sb.append(selectedArray[i]);
             if (i < selectedArray.length - 1) {
                 sb.append(",");
             }
         }
-        String result = sb.toString();
+        final String result = sb.toString();
         listener.saveQuickStartApps(result);
-        QuickStartAppPreference preference = (QuickStartAppPreference) getPreference();
+        final QuickStartAppPreference preference = (QuickStartAppPreference) getPreference();
         if (preference != null) {
             preference.saveValue(result);
         }

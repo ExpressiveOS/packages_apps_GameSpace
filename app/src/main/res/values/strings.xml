@@ -21,10 +21,10 @@
 
     <!-- Auto brightness -->
     <string name="auto_brightness_disabled_title">Disable auto-brightness</string>
-    <string name="auto_brightness_disabled_summary">Keep brightness settled while in-game</string>
+    <string name="auto_brightness_disabled_summary">Lock screen brightness while gaming</string>
 
     <!-- Three finger swipe -->
-    <string name="three_screenshot_disabled_summary">Temporary disable three-fingers-swipe gesture while in-game</string>
+    <string name="three_screenshot_disabled_summary">Temporarily disable three-finger swipe gesture while in-game</string>
     <string name="three_screenshot_disabled_title">Disable three fingers swipe gesture</string>
 
     <!-- Stay awake -->
@@ -47,7 +47,7 @@
 
     <!-- Disable ADB debugging -->
     <string name="adb_disabled_title">Disable USB debugging</string>
-    <string name="adb_disabled_summary">Temporary disable USB ADB debugging while in-game</string>
+    <string name="adb_disabled_summary">Temporarily disable USB debugging while in-game</string>
 
     <!-- Ringer Mode -->
     <string name="in_game_calls_title">In-game call</string>
@@ -59,7 +59,7 @@
 
     <!-- Danmaku Notification Mode -->
     <string name="danmaku_notification_mode_title">Danmaku notification mode</string>
-    <string name="danmaku_notification_mode_summary">Show notification as danmaku aka bullet comments while game is active</string>
+    <string name="danmaku_notification_mode_summary">Show notifications as scrolling overlay banners while gaming</string>
 
     <!-- Gamespace opacity -->
     <string name="gamespace_menu_opacity_title">Overlay menu opacity level</string>
@@ -181,4 +181,31 @@
     <!-- Pulse bass haptics -->
     <string name="pulse_bass_haptics_disabled_title">Disable pulse bass haptics</string>
     <string name="pulse_bass_haptics_disabled_summary">Automatically disable pulse bass haptics if enabled</string>
- </resources>
+
+    <!-- Wave 5B Accessibility, Telemetry, Localization & Picker States -->
+    <string name="custom_seekbar_decrease_cd">Decrease %1$s</string>
+    <string name="custom_seekbar_increase_cd">Increase %1$s</string>
+    <string name="cd_auto_brightness">Auto-brightness</string>
+    <string name="cd_open_game_bar">Open Game Space controls</string>
+    <string name="cd_fps_overlay">FPS %1$s, open Game Space controls</string>
+    <string name="telemetry_fps_value">%1$d FPS</string>
+    <string name="telemetry_fps_text">%1$s FPS</string>
+    <string name="telemetry_fps_placeholder">-- FPS</string>
+    <string name="telemetry_temp_celsius">%1$d°C</string>
+    <string name="telemetry_ram_percent">%1$d%% RAM</string>
+    <string name="game_mode_short_balanced">Balance</string>
+    <string name="game_mode_short_battery">Battery</string>
+    <string name="game_mode_short_boost">Boost</string>
+    <string name="angle_driver_default">Default</string>
+    <string name="angle_driver_angle">ANGLE</string>
+    <string name="angle_driver_native">Native</string>
+    <string name="per_app_unregister_title">Remove from library</string>
+    <string name="per_app_unregister_confirm">Remove %1$s from your Game Space library?</string>
+    <string name="per_app_unregister_action">Remove</string>
+    <string name="app_selector_search_hint">Search apps</string>
+    <string name="app_selector_clear_search">Clear search</string>
+    <string name="app_selector_loading">Loading apps…</string>
+    <string name="app_selector_empty">No more apps to add</string>
+    <string name="app_selector_empty_search">No apps match "%1$s"</string>
+    <string name="quick_start_apps_loading">Loading apps…</string>
+</resources>

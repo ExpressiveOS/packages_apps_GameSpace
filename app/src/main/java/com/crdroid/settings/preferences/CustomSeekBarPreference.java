@@ -245,7 +245,8 @@ public class CustomSeekBarPreference extends SliderPreference {
 
         if (minusFrame != null && minusIcon != null) {
             styleStepButton(context, minusFrame, minusIcon, R.drawable.ic_custom_seekbar_minus,
-                    /* isStart= */ true, titleText + " -");
+                    /* isStart= */ true,
+                    context.getString(R.string.custom_seekbar_decrease_cd, titleText));
             minusFrame.setOnClickListener(v -> {
                 if (!isEnabled()) return;
                 int base = slider != null ? Math.round(slider.getValue()) : getValue();
@@ -261,7 +262,8 @@ public class CustomSeekBarPreference extends SliderPreference {
 
         if (plusFrame != null && plusIcon != null) {
             styleStepButton(context, plusFrame, plusIcon, R.drawable.ic_custom_seekbar_plus,
-                    /* isStart= */ false, titleText + " +");
+                    /* isStart= */ false,
+                    context.getString(R.string.custom_seekbar_increase_cd, titleText));
             plusFrame.setOnClickListener(v -> {
                 if (!isEnabled()) return;
                 int base = slider != null ? Math.round(slider.getValue()) : getValue();
@@ -291,7 +293,9 @@ public class CustomSeekBarPreference extends SliderPreference {
             mLastHapticValue = currentValue;
             slider.setStateDescription(formatValueForSummary(currentValue));
 
-            slider.addOnChangeListener((s, value, fromUser) -> {
+            // Register via SliderPreference single-slot extra listeners so RecyclerView rebinds
+            // never leak duplicate listeners while preserving SliderPreference persistence.
+            setExtraChangeListener((s, value, fromUser) -> {
                 final int rounded = Math.round(value);
                 if (valueBadge != null) {
                     valueBadge.setText(formatValueForSummary(rounded));
@@ -312,7 +316,7 @@ public class CustomSeekBarPreference extends SliderPreference {
                 }
             });
 
-            slider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
+            setExtraTouchListener(new Slider.OnSliderTouchListener() {
                 @Override
                 public void onStartTrackingTouch(@NonNull Slider s) {
                     mInUserDrag = true;
@@ -344,9 +348,9 @@ public class CustomSeekBarPreference extends SliderPreference {
     private void styleStepButton(@NonNull Context context, @NonNull ViewGroup frame,
             @NonNull ImageView icon, int drawableRes, boolean isStart,
             @NonNull CharSequence contentDescription) {
-        final int sizePx = dp(context, 36);
+        final int sizePx = dp(context, 48);
         final int iconPx = dp(context, 18);
-        final int gapPx = dp(context, 4);
+        final int gapPx = dp(context, 2);
 
         ViewGroup.LayoutParams rawLp = frame.getLayoutParams();
         if (rawLp instanceof LinearLayout.LayoutParams) {

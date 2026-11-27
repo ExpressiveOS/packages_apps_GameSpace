@@ -139,6 +139,8 @@ class GameSidebar(
     private var pillExpanded = false
     private val pillExpandedState = mutableStateOf(false)
     private val barTopState = mutableIntStateOf(0)
+    private val cutoutLeftPxState = mutableIntStateOf(0)
+    private val cutoutRightPxState = mutableIntStateOf(0)
     private val sessionStartElapsedMsState = mutableLongStateOf(SystemClock.elapsedRealtime())
     private val taskManager by lazy { ActivityTaskManager.getService() }
 
@@ -370,9 +372,7 @@ class GameSidebar(
             panelView = null
         }
         runCatching {
-            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
-            Process.setThreadGroupAndCpuset(Process.myTid(), Process.THREAD_GROUP_BACKGROUND)
-            Process.setProcessGroup(Process.myPid(), Process.THREAD_GROUP_BACKGROUND)
+            Process.setThreadPriority(Process.THREAD_PRIORITY_DEFAULT)
         }
 
         if (!shouldClose) {
@@ -498,12 +498,14 @@ class GameSidebar(
                 ) { if (!dismissing) requestDismissPanel() },
             contentAlignment = alignment,
         ) {
+            val cutoutStartDp = with(density) { cutoutLeftPxState.intValue.toDp() }
+            val cutoutEndDp = with(density) { cutoutRightPxState.intValue.toDp() }
             val edgePadding = if (bottomAligned) navBottomDp + 8.dp else barTopDp
             Box(
                 modifier = Modifier
                     .padding(
-                        start = 12.dp,
-                        end = 12.dp,
+                        start = 12.dp + cutoutStartDp,
+                        end = 12.dp + cutoutEndDp,
                         top = if (!bottomAligned) edgePadding else 0.dp,
                         bottom = if (bottomAligned) edgePadding else 0.dp,
                     )
@@ -583,9 +585,15 @@ class GameSidebar(
     }
 
     private fun updateScreenMetrics() {
-        val bounds = wm.maximumWindowMetrics.bounds
+        val metrics = wm.currentWindowMetrics
+        val bounds = metrics.bounds
+        val cutout = metrics.windowInsets.displayCutout
+        cutoutLeftPxState.intValue = cutout?.safeInsetLeft ?: 0
+        cutoutRightPxState.intValue = cutout?.safeInsetRight ?: 0
+        val topCutout = cutout?.safeInsetTop ?: 0
         halfWidth = bounds.width() / 2
-        safeArea = context.statusbarHeight + (4 * context.resources.displayMetrics.density).toInt()
+        safeArea = maxOf(context.statusbarHeight, topCutout) +
+            (4 * context.resources.displayMetrics.density).toInt()
         safeHeight = bounds.height() - safeArea
     }
 
@@ -612,7 +620,7 @@ class GameSidebar(
 
     private fun dockGameBar() {
         gameBarLayoutParam.gravity = Gravity.TOP or (if (circleOnLeft) Gravity.START else Gravity.END)
-        gameBarLayoutParam.x = 0
+        gameBarLayoutParam.x = if (circleOnLeft) cutoutLeftPxState.intValue else cutoutRightPxState.intValue
         gameBarLayoutParam.y = gameBarLayoutParam.y.coerceIn(safeArea, safeHeight)
     }
 

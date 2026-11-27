@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2023-2024 the risingOS Android Project           
+ * Copyright (C) 2023-2024 the risingOS Android Project
+ * SPDX-FileCopyrightText: 2026 The ExpressiveOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,21 +16,49 @@
  */
 package io.chaldeaprjkt.gamespace.preferences;
 
-import android.content.*;
-import android.content.pm.*;
-import android.graphics.drawable.Drawable;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.ActivityInfo;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.AttributeSet;
+
+import androidx.annotation.NonNull;
 import androidx.preference.DialogPreference;
 import androidx.preference.PreferenceManager;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class QuickStartAppPreference extends DialogPreference {
 
-    private String[] appPackageNames;
-    private String[] appNames;
-    private Drawable[] appIcons;
+    private static final ExecutorService IO_EXECUTOR = Executors.newSingleThreadExecutor();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    private volatile String[] appPackageNames = new String[0];
+    private volatile String[] appNames = new String[0];
+    private volatile boolean isLoaded = false;
+    private volatile boolean isLoading = false;
+    private final List<Runnable> pendingLoadListeners = new ArrayList<>();
+
+    private static final class AppItem {
+        final String packageName;
+        final String label;
+
+        AppItem(String packageName, String label) {
+            this.packageName = packageName;
+            this.label = label;
+        }
+    }
 
     public QuickStartAppPreference(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -38,74 +67,89 @@ public class QuickStartAppPreference extends DialogPreference {
     @Override
     protected void onAttachedToHierarchy(PreferenceManager preferenceManager) {
         super.onAttachedToHierarchy(preferenceManager);
-        loadInstalledUserApps(getContext());
+        loadInstalledUserAppsAsync(getContext());
     }
 
-    private void loadInstalledUserApps(Context context) {
-        if (context == null) return;
+    public void loadInstalledUserAppsAsync(Context context) {
+        if (context == null || isLoading) return;
+        final Context appContext = context.getApplicationContext();
+        isLoading = true;
+        IO_EXECUTOR.execute(() -> {
+            final List<AppItem> items = queryInstalledApps(appContext);
+            final String[] pkgs = new String[items.size()];
+            final String[] names = new String[items.size()];
+            for (int i = 0; i < items.size(); i++) {
+                pkgs[i] = items.get(i).packageName;
+                names[i] = items.get(i).label;
+            }
+            mainHandler.post(() -> {
+                appPackageNames = pkgs;
+                appNames = names;
+                isLoaded = true;
+                isLoading = false;
+                if (!pendingLoadListeners.isEmpty()) {
+                    final List<Runnable> callbacks = new ArrayList<>(pendingLoadListeners);
+                    pendingLoadListeners.clear();
+                    for (Runnable callback : callbacks) {
+                        callback.run();
+                    }
+                }
+            });
+        });
+    }
 
-        PackageManager pm = context.getPackageManager();
-        Intent intent = new Intent(Intent.ACTION_MAIN, null);
+    private static List<AppItem> queryInstalledApps(@NonNull Context context) {
+        final PackageManager pm = context.getPackageManager();
+        final Intent intent = new Intent(Intent.ACTION_MAIN, null);
         intent.addCategory(Intent.CATEGORY_LAUNCHER);
 
-        List<ResolveInfo> resolveInfos = pm.queryIntentActivities(intent, 0);
-        List<String> packageNames = new ArrayList<>();
-        List<String> names = new ArrayList<>();
-        List<Drawable> icons = new ArrayList<>();
+        final List<ResolveInfo> resolveInfos = pm.queryIntentActivities(intent, 0);
+        final List<AppItem> items = new ArrayList<>(resolveInfos.size());
+        final Set<String> seenPackages = new HashSet<>(resolveInfos.size());
 
         for (ResolveInfo resolveInfo : resolveInfos) {
-            ActivityInfo activityInfo = resolveInfo.activityInfo;
-            if (activityInfo != null) {
-                String packageName = activityInfo.packageName;
-                try {
-                    ApplicationInfo appInfo = pm.getApplicationInfo(packageName, 0);
-                    packageNames.add(packageName);
-                    names.add(pm.getApplicationLabel(appInfo).toString());
-                    icons.add(pm.getApplicationIcon(appInfo));
-                } catch (PackageManager.NameNotFoundException e) {
-                }
+            final ActivityInfo activityInfo = resolveInfo.activityInfo;
+            if (activityInfo == null) continue;
+            final String packageName = activityInfo.packageName;
+            if (!seenPackages.add(packageName)) continue;
+            try {
+                final ApplicationInfo appInfo = pm.getApplicationInfo(packageName, 0);
+                final CharSequence label = pm.getApplicationLabel(appInfo);
+                items.add(new AppItem(packageName, label != null ? label.toString() : packageName));
+            } catch (PackageManager.NameNotFoundException ignored) {
+                // App uninstalled mid-query.
             }
         }
 
-        appPackageNames = packageNames.toArray(new String[0]);
-        appNames = names.toArray(new String[0]);
-        appIcons = icons.toArray(new Drawable[0]);
-
-        sortAppsAlphabetically();
+        Collections.sort(items, Comparator.comparing(item -> item.label, String.CASE_INSENSITIVE_ORDER));
+        return items;
     }
 
-    private void sortAppsAlphabetically() {
-        for (int i = 0; i < appNames.length - 1; i++) {
-            for (int j = i + 1; j < appNames.length; j++) {
-                if (appNames[i].compareToIgnoreCase(appNames[j]) > 0) {
-                    swapApps(i, j);
-                }
-            }
+    public boolean isAppsLoaded() {
+        return isLoaded;
+    }
+
+    public void addOnLoadedListener(@NonNull Runnable listener) {
+        if (isLoaded) {
+            listener.run();
+            return;
         }
+        pendingLoadListeners.add(listener);
+        loadInstalledUserAppsAsync(getContext());
     }
 
-    private void swapApps(int i, int j) {
-        String tempName = appNames[i];
-        Drawable tempIcon = appIcons[i];
-        String tempPackage = appPackageNames[i];
-        appNames[i] = appNames[j];
-        appIcons[i] = appIcons[j];
-        appPackageNames[i] = appPackageNames[j];
-        appNames[j] = tempName;
-        appIcons[j] = tempIcon;
-        appPackageNames[j] = tempPackage;
+    public void removeOnLoadedListener(@NonNull Runnable listener) {
+        pendingLoadListeners.remove(listener);
     }
 
+    @NonNull
     public String[] getAppPackageNames() {
         return appPackageNames;
     }
 
+    @NonNull
     public String[] getAppNames() {
         return appNames;
-    }
-
-    public Drawable[] getAppIcons() {
-        return appIcons;
     }
 
     public void saveValue(String value) {

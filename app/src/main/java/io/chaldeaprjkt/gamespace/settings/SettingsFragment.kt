@@ -15,6 +15,7 @@
  */
 package io.chaldeaprjkt.gamespace.settings
 
+import android.animation.ValueAnimator
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -27,6 +28,7 @@ import androidx.preference.PreferenceCategory
 import androidx.preference.SwitchPreferenceCompat
 import androidx.preference.ListPreference
 
+import com.android.settingslib.widget.IllustrationPreference
 import com.android.settingslib.widget.SettingsBasePreferenceFragment
 
 import dagger.hilt.android.AndroidEntryPoint
@@ -96,6 +98,14 @@ class SettingsFragment : Hilt_SettingsFragment(),
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        findPreference<IllustrationPreference>("game_settings_illustration_video")
+            ?.setOnBindListener { lottieView ->
+                if (!ValueAnimator.areAnimatorsEnabled()) {
+                    lottieView.pauseAnimation()
+                    lottieView.progress = 0f
+                }
+            }
 
         apps = findPreference("gamespace_game_list")
         apps?.onRegisteredAppClick { pkg ->

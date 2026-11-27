@@ -67,9 +67,9 @@
 
             <FrameLayout
                 android:id="@+id/custom_seekbar_reset_button"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:layout_marginEnd="6dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="2dp"
                 android:background="@drawable/bg_custom_seekbar_reset_pill"
                 android:clickable="true"
                 android:focusable="true"

@@ -155,8 +155,8 @@ class DanmakuService @Inject constructor(
         layoutParams.y = getOffsetForPosition()
         layoutParams.width = (NOTIFICATION_MAX_WIDTH * windowManager.currentWindowMetrics.bounds.width()) / 100
         notificationOverlay.setTextSize(
-            TypedValue.COMPLEX_UNIT_PX,
-            (if (isPortrait) NOTIFICATION_SIZE_PORTRAIT else NOTIFICATION_SIZE_LANDSCAPE).toFloat()
+            TypedValue.COMPLEX_UNIT_SP,
+            if (isPortrait) NOTIFICATION_SIZE_PORTRAIT_SP else NOTIFICATION_SIZE_LANDSCAPE_SP
         )
     }
 
@@ -279,8 +279,8 @@ class DanmakuService @Inject constructor(
         private const val DISPLAY_NOTIFICATION_DURATION = 2000L
         private const val DISAPPEAR_ANIMATION_DURATION = 300L
 
-        private const val NOTIFICATION_SIZE_LANDSCAPE = 60
-        private const val NOTIFICATION_SIZE_PORTRAIT = 60
+        private const val NOTIFICATION_SIZE_LANDSCAPE_SP = 16f
+        private const val NOTIFICATION_SIZE_PORTRAIT_SP = 17f
 
         private const val NOTIFICATION_MAX_WIDTH = 75
 

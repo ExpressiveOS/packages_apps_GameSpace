@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2021 Chaldeaprjkt
  * Copyright (C) 2026 crDroid Android Project
+ * SPDX-FileCopyrightText: 2026 The ExpressiveOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +22,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
 import android.os.UserHandle
 import android.provider.Settings
 import android.util.AttributeSet
@@ -31,20 +33,28 @@ import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceViewHolder
 import androidx.preference.SwitchPreferenceCompat
-
 import io.chaldeaprjkt.gamespace.R
 import io.chaldeaprjkt.gamespace.data.GameConfig
-import io.chaldeaprjkt.gamespace.data.SystemSettings
 import io.chaldeaprjkt.gamespace.data.UserGame
 import io.chaldeaprjkt.gamespace.settings.PerAppSettingsActivity
 import io.chaldeaprjkt.gamespace.utils.GameModeUtils.Companion.describeGameMode
 import io.chaldeaprjkt.gamespace.utils.di.ServiceViewEntryPoint
 import io.chaldeaprjkt.gamespace.utils.entryPointOf
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AppListPreferences @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
     PreferenceCategory(context, attrs), Preference.OnPreferenceClickListener {
 
     private val apps = mutableListOf<UserGame>()
+    private var scope: CoroutineScope? = null
+    private var loadJob: Job? = null
+    private var loadGeneration = 0L
 
     private val systemSettings by lazy {
         context.entryPointOf<ServiceViewEntryPoint>().systemSettings()
@@ -55,10 +65,18 @@ class AppListPreferences @JvmOverloads constructor(context: Context, attrs: Attr
     }
 
     private lateinit var registeredAppClickAction: (String) -> Unit
+    private var addGameClickListener: Preference.OnPreferenceClickListener? = null
 
     init {
         isOrderingAsAdded = false
     }
+
+    private data class ResolvedGame(
+        val game: UserGame,
+        val label: CharSequence,
+        val icon: Drawable?,
+        val canLaunch: Boolean,
+    )
 
     private val makeAddPref by lazy {
         Preference(context).apply {
@@ -66,7 +84,7 @@ class AppListPreferences @JvmOverloads constructor(context: Context, attrs: Attr
             key = KEY_ADD_GAME
             setIcon(R.drawable.ic_add)
             isPersistent = false
-            onPreferenceClickListener = this@AppListPreferences
+            onPreferenceClickListener = addGameClickListener ?: this@AppListPreferences
         }
     }
 
@@ -77,16 +95,22 @@ class AppListPreferences @JvmOverloads constructor(context: Context, attrs: Attr
             summary = context.getString(R.string.auto_game_detect_summary)
             setDefaultValue(true)
             setOnPreferenceChangeListener { _, newValue ->
-                    systemSettings.autoGameDetect = newValue as Boolean
+                systemSettings.autoGameDetect = newValue as Boolean
                 true
             }
         }
     }
 
+    private fun ensureScope(): CoroutineScope {
+        val current = scope
+        if (current != null) return current
+        return CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { scope = it }
+    }
+
     private fun getAppInfo(packageName: String): ApplicationInfo? = try {
         val flags = PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong())
         context.packageManager.getApplicationInfo(packageName, flags)
-    } catch (e: PackageManager.NameNotFoundException) {
+    } catch (_: PackageManager.NameNotFoundException) {
         null
     }
 
@@ -124,17 +148,14 @@ class AppListPreferences @JvmOverloads constructor(context: Context, attrs: Attr
         }
     }
 
-    private fun buildGamePref(game: UserGame): Preference {
-        val info = getAppInfo(game.packageName)
-        val pm = context.packageManager
-
+    private fun buildGamePref(resolved: ResolvedGame): Preference {
+        val game = resolved.game
         return object : Preference(context) {
             override fun onBindViewHolder(holder: PreferenceViewHolder) {
                 super.onBindViewHolder(holder)
 
-                val canLaunch = pm.getLaunchIntentForPackage(game.packageName) != null
                 holder.findViewById(R.id.launch_icon)?.let { play ->
-                    play.visibility = if (canLaunch) View.VISIBLE else View.GONE
+                    play.visibility = if (resolved.canLaunch) View.VISIBLE else View.GONE
                     play.setOnClickListener { v ->
                         v.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                         launchGame(game.packageName)
@@ -150,31 +171,65 @@ class AppListPreferences @JvmOverloads constructor(context: Context, attrs: Attr
             }
         }.apply {
             key = game.packageName
-            title = info?.loadLabel(pm)
+            title = resolved.label
             summary = context.describeGameMode(game.mode)
-            icon = info?.loadIcon(pm)
+            icon = resolved.icon
             layoutResource = R.layout.library_item
             isPersistent = false
+            setOnPreferenceClickListener {
+                if (::registeredAppClickAction.isInitialized) {
+                    registeredAppClickAction(game.packageName)
+                    true
+                } else {
+                    false
+                }
+            }
         }
     }
 
     fun updateAppList() {
         apps.clear()
         systemSettings.userGames?.let { apps.addAll(it) }
+        val snapshot = apps.toList()
 
-        removeAll()
-        addPreference(autoDetectPref)
-        addPreference(makeAddPref)
+        // Preserve any external click listener wired onto add_game before re-adding.
+        findPreference<Preference>(KEY_ADD_GAME)?.onPreferenceClickListener?.let {
+            if (it !== this) addGameClickListener = it
+        }
+        makeAddPref.onPreferenceClickListener = addGameClickListener ?: this
 
-        apps
-            .filter { getAppInfo(it.packageName) != null }
-            .map(::buildGamePref)
-            .sortedBy { it.title.toString().lowercase() }
-            .forEach(::addPreference)
+        if (findPreference<Preference>(KEY_AUTO_GAME_DETECT) == null) {
+            addPreference(autoDetectPref)
+        }
+        if (findPreference<Preference>(KEY_ADD_GAME) == null) {
+            addPreference(makeAddPref)
+        }
+
+        val generation = ++loadGeneration
+        loadJob?.cancel()
+        loadJob = ensureScope().launch {
+            val pm = context.packageManager
+            val resolvedGames = withContext(Dispatchers.IO) {
+                snapshot.mapNotNull { game ->
+                    val info = getAppInfo(game.packageName) ?: return@mapNotNull null
+                    ResolvedGame(
+                        game = game,
+                        label = info.loadLabel(pm),
+                        icon = info.loadIcon(pm),
+                        canLaunch = pm.getLaunchIntentForPackage(game.packageName) != null,
+                    )
+                }.sortedBy { it.label.toString().lowercase() }
+            }
+            if (generation != loadGeneration) return@launch
+
+            removeAll()
+            addPreference(autoDetectPref)
+            addPreference(makeAddPref)
+            resolvedGames.forEach { addPreference(buildGamePref(it)) }
+        }
     }
 
     private fun registerApp(packageName: String) {
-        // Lift any prior deny so the framework will auto-keep this on reinstall.
         val denied = readDeniedList()
         if (denied.remove(packageName)) writeDeniedList(denied)
 
@@ -187,7 +242,6 @@ class AppListPreferences @JvmOverloads constructor(context: Context, attrs: Attr
     }
 
     private fun unregisterApp(packageName: String) {
-        // Persist the user's "no" so the framework's auto-detect skips this package.
         if (isGameCategory(packageName)) {
             val denied = readDeniedList()
             if (denied.add(packageName)) writeDeniedList(denied)
@@ -202,6 +256,14 @@ class AppListPreferences @JvmOverloads constructor(context: Context, attrs: Attr
     override fun onAttached() {
         super.onAttached()
         updateAppList()
+    }
+
+    override fun onDetached() {
+        loadJob?.cancel()
+        loadJob = null
+        scope?.cancel()
+        scope = null
+        super.onDetached()
     }
 
     override fun onPreferenceClick(preference: Preference): Boolean {

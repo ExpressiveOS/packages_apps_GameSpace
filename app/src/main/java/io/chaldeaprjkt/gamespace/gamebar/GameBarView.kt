@@ -64,6 +64,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.android.axion.compose.expressive.ExpressiveBlurSurface
 import com.android.axion.compose.expressive.ExpressiveMorphContainer
@@ -77,13 +82,14 @@ import com.android.compose.animation.scene.rememberMutableSceneTransitionLayoutS
 import io.chaldeaprjkt.gamespace.R
 import kotlin.math.abs
 
-private const val PILL_WIDTH_DP = 52
-private const val PILL_BUTTON_SIZE_DP = 40
+private const val PILL_WIDTH_DP = 60
+private const val PILL_BUTTON_SIZE_DP = 48
 private const val NOTCH_WIDTH_DP = 14
-private const val NOTCH_HEIGHT_DP = 44
-private const val NOTCH_TOUCH_WIDTH_DP = 28
+private const val NOTCH_HEIGHT_DP = 48
+private const val NOTCH_TOUCH_WIDTH_DP = 48
 private const val DRAG_THRESHOLD_DP = 12
-private const val FPS_PILL_HEIGHT_DP = 30
+private const val FPS_PILL_HEIGHT_DP = 32
+private const val FPS_PILL_TOUCH_HEIGHT_DP = 48
 
 @Composable
 fun GameBarView(
@@ -287,37 +293,54 @@ private fun PillTab(
             )
         }
         val resolvedFps = fpsText.ifBlank { "--" }
-        Row(
+        val fpsDescription = stringResource(R.string.cd_fps_overlay, resolvedFps)
+        val openLabel = stringResource(R.string.cd_open_game_bar)
+        Box(
             modifier = modifier
-                .height(FPS_PILL_HEIGHT_DP.dp)
-                .widthIn(min = 44.dp)
-                .alpha(idleAlpha)
+                .height(FPS_PILL_TOUCH_HEIGHT_DP.dp)
+                .widthIn(min = 48.dp)
+                .semantics(mergeDescendants = true) {
+                    role = Role.Button
+                    contentDescription = fpsDescription
+                    onClick(label = openLabel) {
+                        onTap()
+                        true
+                    }
+                }
                 .then(pointerModifier)
-                .pointerInput(onTap) { detectTapGestures(onTap = { onTap() }) }
-                .clip(fpsShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f))
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
-                    shape = fpsShape,
-                )
-                .padding(horizontal = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
+                .pointerInput(onTap) { detectTapGestures(onTap = { onTap() }) },
+            contentAlignment = if (dockedOnLeft) Alignment.CenterStart else Alignment.CenterEnd,
         ) {
-            Box(
+            Row(
                 modifier = Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
-            )
-            Spacer(modifier = Modifier.width(5.dp))
-            Text(
-                text = resolvedFps,
-                color = MaterialTheme.colorScheme.onSurface,
-                style = EmphasizedTabularStyle(MaterialTheme.typography.labelMediumEmphasized),
-                maxLines = 1,
-            )
+                    .height(FPS_PILL_HEIGHT_DP.dp)
+                    .widthIn(min = 48.dp)
+                    .alpha(idleAlpha)
+                    .clip(fpsShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f))
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+                        shape = fpsShape,
+                    )
+                    .padding(horizontal = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                )
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(
+                    text = resolvedFps,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = EmphasizedTabularStyle(MaterialTheme.typography.labelMediumEmphasized),
+                    maxLines = 1,
+                )
+            }
         }
     } else {
         val notchShape = if (dockedOnLeft) {
@@ -325,10 +348,19 @@ private fun PillTab(
         } else {
             RoundedCornerShape(topStart = 1000.dp, bottomStart = 1000.dp)
         }
+        val openLabel = stringResource(R.string.cd_open_game_bar)
         Box(
             modifier = modifier
                 .width(NOTCH_TOUCH_WIDTH_DP.dp)
                 .height(NOTCH_HEIGHT_DP.dp)
+                .semantics(mergeDescendants = true) {
+                    role = Role.Button
+                    contentDescription = openLabel
+                    onClick(label = openLabel) {
+                        onTap()
+                        true
+                    }
+                }
                 .then(pointerModifier)
                 .pointerInput(onTap) { detectTapGestures(onTap = { onTap() }) },
             contentAlignment = if (dockedOnLeft) Alignment.CenterStart else Alignment.CenterEnd,

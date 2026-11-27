@@ -52,11 +52,12 @@ class PerAppSettingsViewModel @Inject constructor(
     var angleFeatureAvailable by mutableStateOf(false)
         private set
 
-    val gameModeOptions = listOf(
-        1 to "Standard",
-        2 to "Performance",
-        3 to "Battery"
-    )
+    val gameModeOptions: List<Pair<Int, String>>
+        get() = listOf(
+            1 to context.getString(R.string.game_mode_balanced),
+            2 to context.getString(R.string.game_mode_performance),
+            3 to context.getString(R.string.game_mode_battery),
+        )
 
     fun loadGame(pkg: String) {
         if (pkg.isEmpty()) return
@@ -86,11 +87,12 @@ class PerAppSettingsViewModel @Inject constructor(
         gameModeUtils.setGameModeFor(packageName, systemSettings, mode)
     }
 
-    val angleDriverOptions = listOf(
-        GameModeUtils.DRIVER_CHOICE_DEFAULT to "Default",
-        GameModeUtils.DRIVER_CHOICE_ANGLE to "ANGLE",
-        GameModeUtils.DRIVER_CHOICE_NATIVE to "Native"
-    )
+    val angleDriverOptions: List<Pair<String, String>>
+        get() = listOf(
+            GameModeUtils.DRIVER_CHOICE_DEFAULT to context.getString(R.string.angle_driver_default),
+            GameModeUtils.DRIVER_CHOICE_ANGLE to context.getString(R.string.angle_driver_angle),
+            GameModeUtils.DRIVER_CHOICE_NATIVE to context.getString(R.string.angle_driver_native),
+        )
 
     fun updateAngleDriverChoice(choice: String) {
         angleDriverChoice = choice

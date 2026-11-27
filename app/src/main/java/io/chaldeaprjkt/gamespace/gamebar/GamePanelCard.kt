@@ -37,7 +37,9 @@ import android.os.ServiceManager
 import android.os.SystemClock
 import android.os.Temperature
 import android.os.UserHandle
+import android.text.format.DateFormat
 import android.util.Log
+import androidx.annotation.StringRes
 import androidx.collection.LruCache
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
@@ -114,6 +116,7 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -446,12 +449,10 @@ fun HeaderInfoBar(
     val systemTelemetry = rememberSystemTelemetry(fallbackTempC = batteryInfo.temperatureC)
     val liveFps by fpsInteractor.currentFps.collectAsState()
 
-    val resolvedFpsDisplay = remember(liveFps, liveFpsText) {
-        when {
-            liveFps > 0.5f -> "${liveFps.roundToInt()} FPS"
-            liveFpsText.isNotBlank() -> "$liveFpsText FPS"
-            else -> "-- FPS"
-        }
+    val resolvedFpsDisplay = when {
+        liveFps > 0.5f -> stringResource(R.string.telemetry_fps_value, liveFps.roundToInt())
+        liveFpsText.isNotBlank() -> stringResource(R.string.telemetry_fps_text, liveFpsText)
+        else -> stringResource(R.string.telemetry_fps_placeholder)
     }
 
     Column(
@@ -482,8 +483,14 @@ fun HeaderInfoBar(
 
         TelemetryPillStrip(
             fpsLabel = resolvedFpsDisplay,
-            tempLabel = "${systemTelemetry.socOrSkinTempC.roundToInt()}\u00B0C",
-            ramLabel = "${systemTelemetry.ramUsedPercent}% RAM",
+            tempLabel = stringResource(
+                R.string.telemetry_temp_celsius,
+                systemTelemetry.socOrSkinTempC.roundToInt(),
+            ),
+            ramLabel = stringResource(
+                R.string.telemetry_ram_percent,
+                systemTelemetry.ramUsedPercent,
+            ),
             batteryInfo = batteryInfo,
         )
 
@@ -614,7 +621,7 @@ private fun TopRowHeader(
                     .padding(horizontal = 8.dp, vertical = 2.dp),
             ) {
                 Text(
-                    text = currentMode.displayName,
+                    text = stringResource(currentMode.displayNameRes),
                     style = MaterialTheme.typography.labelSmallEmphasized,
                     color = modeOnTint,
                 )
@@ -628,7 +635,7 @@ private fun TopRowHeader(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             onClick = onEditClick,
-            modifier = Modifier.size(36.dp),
+            modifier = Modifier.size(48.dp),
         ) {
             Icon(
                 painter = painterResource(R.drawable.materialsymbols_ic_edit_rounded_filled),
@@ -656,7 +663,7 @@ private fun TopRowHeader(
                 haptics.performToggle(!headerExpanded)
                 onToggleExpand()
             },
-            modifier = Modifier.size(36.dp),
+            modifier = Modifier.size(48.dp),
         ) {
             Icon(
                 painter = painterResource(R.drawable.materialsymbols_ic_expand_more_rounded_filled),
@@ -1325,10 +1332,10 @@ fun BrightnessSlider(interactor: BrightnessInteractor) {
                     }
                 }
                 sliderPosition = clamped
-                interactor.onUserInteracted()
-                interactor.setBrightness(clamped)
             },
             onValueChangeFinished = {
+                interactor.onUserInteracted()
+                interactor.setBrightness(sliderPosition)
                 userIsAdjusting = false
             },
             enabled = true,
@@ -1397,7 +1404,7 @@ fun BrightnessSlider(interactor: BrightnessInteractor) {
                 haptics.performToggle(!autoActive)
                 interactor.toggleAutoMode()
             },
-            modifier = Modifier.size(38.dp),
+            modifier = Modifier.size(48.dp),
         ) {
             Icon(
                 painter = if (autoActive) {
@@ -1405,7 +1412,7 @@ fun BrightnessSlider(interactor: BrightnessInteractor) {
                 } else {
                     painterResource(R.drawable.materialsymbols_ic_brightness_7_rounded_filled)
                 },
-                contentDescription = stringResource(R.string.brightness_slider),
+                contentDescription = stringResource(R.string.cd_auto_brightness),
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -1453,69 +1460,82 @@ fun FpsGraph(
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f)),
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            if (normalizedPoints.size > 1) {
-                val width = size.width
-                val height = size.height
-                val stepX = width / (normalizedPoints.size - 1)
+        val graphColor = graphData.third
+        Spacer(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithCache {
+                    if (normalizedPoints.size <= 1) {
+                        onDrawBehind {}
+                    } else {
+                        val width = size.width
+                        val height = size.height
+                        val stepX = width / (normalizedPoints.size - 1)
 
-                val path = Path().apply {
-                    moveTo(0f, height)
-                    lineTo(0f, height - (normalizedPoints[0] * height))
-                    for (i in 1 until normalizedPoints.size) {
-                        val currentX = i * stepX
-                        val currentY = height - (normalizedPoints[i] * height)
-                        if (i == 1) {
-                            lineTo(currentX, currentY)
-                        } else {
-                            val prevX = (i - 1) * stepX
-                            val prevY = height - (normalizedPoints[i - 1] * height)
-                            val controlX = (prevX + currentX) / 2f
-                            val controlY = (prevY + currentY) / 2f
-                            quadraticBezierTo(controlX, controlY, currentX, currentY)
+                        val fillPath = Path().apply {
+                            moveTo(0f, height)
+                            lineTo(0f, height - (normalizedPoints[0] * height))
+                            for (i in 1 until normalizedPoints.size) {
+                                val currentX = i * stepX
+                                val currentY = height - (normalizedPoints[i] * height)
+                                if (i == 1) {
+                                    lineTo(currentX, currentY)
+                                } else {
+                                    val prevX = (i - 1) * stepX
+                                    val prevY = height - (normalizedPoints[i - 1] * height)
+                                    quadraticBezierTo(
+                                        (prevX + currentX) / 2f,
+                                        (prevY + currentY) / 2f,
+                                        currentX,
+                                        currentY,
+                                    )
+                                }
+                            }
+                            lineTo(width, height)
+                            close()
+                        }
+
+                        val linePath = Path().apply {
+                            moveTo(0f, height - (normalizedPoints[0] * height))
+                            for (i in 1 until normalizedPoints.size) {
+                                val currentX = i * stepX
+                                val currentY = height - (normalizedPoints[i] * height)
+                                if (i == 1) {
+                                    lineTo(currentX, currentY)
+                                } else {
+                                    val prevX = (i - 1) * stepX
+                                    val prevY = height - (normalizedPoints[i - 1] * height)
+                                    quadraticBezierTo(
+                                        (prevX + currentX) / 2f,
+                                        (prevY + currentY) / 2f,
+                                        currentX,
+                                        currentY,
+                                    )
+                                }
+                            }
+                        }
+
+                        val gradient = Brush.verticalGradient(
+                            colors = listOf(
+                                graphColor.copy(alpha = 0.45f),
+                                graphColor.copy(alpha = 0.05f),
+                            ),
+                            startY = 0f,
+                            endY = height,
+                        )
+                        val stroke = Stroke(
+                            width = 2.dp.toPx(),
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round,
+                        )
+
+                        onDrawBehind {
+                            drawPath(path = fillPath, brush = gradient)
+                            drawPath(path = linePath, color = graphColor, style = stroke)
                         }
                     }
-                    lineTo(width, height)
-                    close()
-                }
-
-                val gradient = Brush.verticalGradient(
-                    colors = listOf(
-                        graphData.third.copy(alpha = 0.45f),
-                        graphData.third.copy(alpha = 0.05f),
-                    ),
-                    startY = 0f,
-                    endY = height,
-                )
-                drawPath(path = path, brush = gradient)
-
-                val linePath = Path().apply {
-                    moveTo(0f, height - (normalizedPoints[0] * height))
-                    for (i in 1 until normalizedPoints.size) {
-                        val currentX = i * stepX
-                        val currentY = height - (normalizedPoints[i] * height)
-                        if (i == 1) {
-                            lineTo(currentX, currentY)
-                        } else {
-                            val prevX = (i - 1) * stepX
-                            val prevY = height - (normalizedPoints[i - 1] * height)
-                            val controlX = (prevX + currentX) / 2f
-                            val controlY = (prevY + currentY) / 2f
-                            quadraticBezierTo(controlX, controlY, currentX, currentY)
-                        }
-                    }
-                }
-                drawPath(
-                    path = linePath,
-                    color = graphData.third,
-                    style = Stroke(
-                        width = 2.dp.toPx(),
-                        cap = StrokeCap.Round,
-                        join = StrokeJoin.Round,
-                    ),
-                )
-            }
-        }
+                },
+        )
 
         val (minFps, avgFps, maxFpsSeen) = graphData.first
         Box(
@@ -1589,7 +1609,7 @@ fun GameModeSelector(
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .height(44.dp),
+                    .height(48.dp),
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1598,11 +1618,11 @@ fun GameModeSelector(
                 ) {
                     Icon(
                         imageVector = mode.icon,
-                        contentDescription = mode.displayName,
+                        contentDescription = stringResource(mode.displayNameRes),
                         modifier = Modifier.size(18.dp),
                     )
                     Text(
-                        text = mode.shortLabel,
+                        text = stringResource(mode.shortLabelRes),
                         style = if (isSelected) {
                             MaterialTheme.typography.labelSmallEmphasized
                         } else {
@@ -1651,10 +1671,19 @@ fun QuickStartAppSidebar(
 
 @Composable
 fun rememberCurrentTime(): String {
-    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-    val timeState = remember { mutableStateOf(timeFormat.format(Date())) }
+    val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val is24Hour = DateFormat.is24HourFormat(context)
+    val timeFormat = remember(configuration, is24Hour) {
+        val pattern = DateFormat.getBestDateTimePattern(
+            Locale.getDefault(),
+            if (is24Hour) "Hm" else "hm",
+        )
+        SimpleDateFormat(pattern, Locale.getDefault())
+    }
+    val timeState = remember(timeFormat) { mutableStateOf(timeFormat.format(Date())) }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(timeFormat) {
         val job = Job()
         val scope = CoroutineScope(Dispatchers.Main.immediate + job)
 
@@ -1807,7 +1836,7 @@ fun QuickStartAppIcon(
             launchAppInFreeformMode(context, appInfo.packageName)
             onAppLaunched()
         },
-        modifier = modifier.size(44.dp),
+        modifier = modifier.size(48.dp),
     ) {
         Image(
             painter = painter,
@@ -1899,13 +1928,13 @@ private fun getPercentage(value: Double, min: Float, max: Float): Double {
 }
 
 enum class GameMode(
-    val displayName: String,
-    val shortLabel: String,
+    @StringRes val displayNameRes: Int,
+    @StringRes val shortLabelRes: Int,
     val icon: ImageVector,
 ) {
-    Balanced("Balanced", "Balance", Icons.Filled.SportsEsports),
-    PowerSave("Power Save", "Battery", Icons.Filled.EnergySavingsLeaf),
-    Performance("Performance", "Boost", Icons.Filled.ElectricBolt),
+    Balanced(R.string.game_mode_balanced, R.string.game_mode_short_balanced, Icons.Filled.SportsEsports),
+    PowerSave(R.string.game_mode_battery, R.string.game_mode_short_battery, Icons.Filled.EnergySavingsLeaf),
+    Performance(R.string.game_mode_performance, R.string.game_mode_short_boost, Icons.Filled.ElectricBolt),
 }
 
 fun GameMode.toSystemGameMode(): Int = when (this) {

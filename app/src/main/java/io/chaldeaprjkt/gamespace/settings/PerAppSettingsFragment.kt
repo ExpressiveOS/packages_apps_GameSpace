@@ -22,6 +22,7 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
 
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.preference.ListPreference
 import androidx.preference.Preference
@@ -83,16 +84,25 @@ class PerAppSettingsFragment : Hilt_PerAppSettingsFragment(),
         }
 
         findPreference<Preference>(PREF_UNREGISTER)?.apply {
+            title = context.getString(R.string.per_app_unregister_title)
             summary = context.getString(R.string.per_app_unregister, viewModel.gameLabel)
             setOnPreferenceClickListener {
-                viewModel.unregisterGame()
-                activity?.setResult(
-                    Activity.RESULT_OK,
-                    Intent().apply {
-                        putExtra(PREF_UNREGISTER, viewModel.packageName)
+                val ctx = context ?: return@setOnPreferenceClickListener true
+                AlertDialog.Builder(ctx)
+                    .setTitle(R.string.per_app_unregister_title)
+                    .setMessage(ctx.getString(R.string.per_app_unregister_confirm, viewModel.gameLabel))
+                    .setPositiveButton(R.string.per_app_unregister_action) { _, _ ->
+                        viewModel.unregisterGame()
+                        activity?.setResult(
+                            Activity.RESULT_OK,
+                            Intent().apply {
+                                putExtra(PREF_UNREGISTER, viewModel.packageName)
+                            }
+                        )
+                        activity?.finish()
                     }
-                )
-                activity?.finish()
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
                 true
             }
         }

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     SPDX-FileCopyrightText: 2026 The ExpressiveOS Project
+     SPDX-License-Identifier: Apache-2.0
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="48dp"
+        android:background="@drawable/bg_app_selector_search"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="4dp">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginEnd="12dp"
+            android:src="@drawable/ic_search"
+            android:importantForAccessibility="no" />
+
+        <EditText
+            android:id="@+id/app_selector_search_input"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:minHeight="48dp"
+            android:background="@null"
+            android:hint="@string/app_selector_search_hint"
+            android:imeOptions="actionSearch"
+            android:inputType="textNoSuggestions"
+            android:maxLines="1"
+            android:singleLine="true"
+            android:textAppearance="?android:attr/textAppearanceListItem"
+            android:textColor="@color/settingslib_materialColorOnSurface"
+            android:textColorHint="@color/settingslib_materialColorOnSurfaceVariant" />
+
+        <ImageButton
+            android:id="@+id/app_selector_search_clear"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/app_selector_clear_search"
+            android:padding="14dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_search_clear"
+            android:visibility="gone" />
+    </LinearLayout>
+</FrameLayout>

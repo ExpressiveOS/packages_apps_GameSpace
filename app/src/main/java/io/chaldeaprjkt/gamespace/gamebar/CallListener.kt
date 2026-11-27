@@ -4,6 +4,7 @@
  * Copyright (C) 2022 Nameless-AOSP Project
  * Copyright (C) 2023 the risingOS Android Project
  * Copyright (C) 2025 AxionOS
+ * SPDX-FileCopyrightText: 2026 The ExpressiveOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +22,7 @@
 
 package io.chaldeaprjkt.gamespace.gamebar
 
-import android.annotation.SuppressLint
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.PixelFormat
@@ -31,27 +32,53 @@ import android.media.AudioSystem
 import android.net.Uri
 import android.provider.ContactsContract
 import android.telecom.TelecomManager
-import android.telephony.PhoneStateListener 
+import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.Toast
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.*
-import androidx.compose.ui.graphics.*
-import androidx.compose.ui.layout.*
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
@@ -176,8 +203,8 @@ class CallListener @Inject constructor(
         val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
         return devices.any {
             it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                    it.type == AudioDeviceInfo.TYPE_USB_HEADSET
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                it.type == AudioDeviceInfo.TYPE_USB_HEADSET
         }
     }
 
@@ -191,7 +218,7 @@ class CallListener @Inject constructor(
             context.contentResolver.query(
                 uri,
                 arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME),
-                null, null, null
+                null, null, null,
             )?.use { cursor ->
                 if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
             } ?: ""
@@ -210,14 +237,15 @@ class CallListener @Inject constructor(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = if (sidebarX < 0)
+            gravity = if (sidebarX < 0) {
                 Gravity.TOP or Gravity.END
-            else
+            } else {
                 Gravity.TOP or Gravity.START
+            }
             x = 1
             y = appSettings.y - 71.extDp
         }
@@ -263,7 +291,6 @@ class CallListener @Inject constructor(
         try {
             windowManager.removeView(overlay)
         } catch (_: IllegalArgumentException) {
-
         }
         ringerOverlay = null
         isOverlayShowing = false
@@ -300,19 +327,19 @@ fun CallOverlay(
     onDismissAnimation: suspend () -> Unit,
     callerPhoto: ImageBitmap? = null
 ) {
-    var isVisible by remember { mutableStateOf(false) }
+    val animatorsEnabled = !rememberExpressiveReducedMotion() && ValueAnimator.areAnimatorsEnabled()
+    var isVisible by remember { mutableStateOf(!animatorsEnabled) }
     var isDismissing by remember { mutableStateOf(false) }
     var btnPressed by remember { mutableStateOf(false) }
-    val reducedMotion = rememberExpressiveReducedMotion()
     val haptics = rememberExpressiveHaptics()
 
     val scale by animateFloatAsState(
         targetValue = when {
             isDismissing -> 0f
-            isVisible || reducedMotion -> 1f
+            isVisible || !animatorsEnabled -> 1f
             else -> 0f
         },
-        animationSpec = if (reducedMotion) {
+        animationSpec = if (!animatorsEnabled) {
             snap()
         } else {
             MaterialTheme.motionScheme.fastSpatialSpec()
@@ -322,7 +349,7 @@ fun CallOverlay(
 
     val fadeAlpha by animateFloatAsState(
         targetValue = if (isDismissing) 0f else 1f,
-        animationSpec = if (reducedMotion) {
+        animationSpec = if (!animatorsEnabled) {
             snap()
         } else {
             MaterialTheme.motionScheme.fastEffectsSpec()
@@ -330,21 +357,25 @@ fun CallOverlay(
         label = "fade"
     )
 
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val animatedPulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.6f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse_alpha"
-    )
-    val pulseAlpha = if (reducedMotion) 1f else animatedPulseAlpha
+    val pulseAlpha = if (animatorsEnabled) {
+        val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+        val animated by infiniteTransition.animateFloat(
+            initialValue = 0.85f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulse_alpha"
+        )
+        animated
+    } else {
+        1f
+    }
 
     val buttonScale by animateFloatAsState(
-        targetValue = if (btnPressed && !reducedMotion) 0.88f else 1f,
-        animationSpec = if (reducedMotion) {
+        targetValue = if (btnPressed && animatorsEnabled) 0.90f else 1f,
+        animationSpec = if (!animatorsEnabled) {
             snap()
         } else {
             MaterialTheme.motionScheme.fastSpatialSpec()
@@ -352,48 +383,22 @@ fun CallOverlay(
         label = "button_press"
     )
 
-    var showPhoto by remember { mutableStateOf(false) }
-    var acceptAlpha by remember { mutableStateOf(1f) }
-    var photoAlpha by remember { mutableStateOf(0f) }
-
     LaunchedEffect(Unit) {
         isVisible = true
-        while (isVisible) {
-            showPhoto = false
-            acceptAlpha = 1f
-            photoAlpha = 0f
-            delay(1500)
-
-            animate(
-                initialValue = 1f,
-                targetValue = 0f,
-                animationSpec = tween(500)
-            ) { value, _ -> acceptAlpha = value }
-            showPhoto = true
-
-            animate(
-                initialValue = 0f,
-                targetValue = 1f,
-                animationSpec = tween(500)
-            ) { value, _ -> photoAlpha = value }
-
-            delay(1500)
-
-            animate(
-                initialValue = 1f,
-                targetValue = 0f,
-                animationSpec = tween(500)
-            ) { value, _ -> photoAlpha = value }
-        }
     }
 
     LaunchedEffect(isDismissing) {
         if (isDismissing) {
             isVisible = false
-            delay(250)
+            if (animatorsEnabled) {
+                delay(200)
+            }
             onDismissAnimation()
         }
     }
+
+    val containerShape = RoundedCornerShape(36.dp)
+    val columnAlign = if (alignRight) Alignment.End else Alignment.Start
 
     Box(
         modifier = Modifier
@@ -406,63 +411,44 @@ fun CallOverlay(
         contentAlignment = if (alignRight) Alignment.TopEnd else Alignment.TopStart
     ) {
         ExpressiveBlurSurface(
-            modifier = Modifier.shadow(8.dp, CircleShape),
-            shape = CircleShape,
+            modifier = Modifier.shadow(8.dp, containerShape),
+            shape = containerShape,
             tintColor = MaterialTheme.colorScheme.surfaceContainerHighest,
         ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(12.dp),
-        ) {
-            IconButton(
-                onClick = {
-                    haptics.performConfirm()
-                    btnPressed = true
-                    onReject()
-                    isDismissing = true
-                },
-                modifier = Modifier
-                    .size(56.dp)
-                    .scale(buttonScale)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.error)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.cd_reject),
-                    tint = MaterialTheme.colorScheme.onError.copy(alpha = pulseAlpha),
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-
-            Box(
-                modifier = Modifier.size(56.dp),
-                contentAlignment = Alignment.Center
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = if (callerPhoto != null) columnAlign else Alignment.CenterHorizontally,
+                modifier = Modifier.padding(12.dp),
             ) {
                 IconButton(
                     onClick = {
                         haptics.performConfirm()
                         btnPressed = true
-                        onAccept()
+                        onReject()
                         isDismissing = true
                     },
                     modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = acceptAlpha }
+                        .size(56.dp)
                         .scale(buttonScale)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
+                        .background(MaterialTheme.colorScheme.error)
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Call,
-                        contentDescription = stringResource(R.string.cd_accept),
-                        tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = pulseAlpha),
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.cd_reject),
+                        tint = MaterialTheme.colorScheme.onError.copy(alpha = pulseAlpha),
                         modifier = Modifier.size(28.dp)
                     )
                 }
 
-                callerPhoto?.let { photo ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (alignRight && callerPhoto != null) {
+                        CallerAvatarBadge(photo = callerPhoto)
+                    }
+
                     IconButton(
                         onClick = {
                             haptics.performConfirm()
@@ -471,43 +457,61 @@ fun CallOverlay(
                             isDismissing = true
                         },
                         modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer { alpha = photoAlpha }
+                            .size(56.dp)
                             .scale(buttonScale)
                             .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
                     ) {
-                        Image(
-                            bitmap = photo,
-                            contentDescription = stringResource(R.string.cd_caller_photo),
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(CircleShape)
+                        Icon(
+                            imageVector = Icons.Filled.Call,
+                            contentDescription = stringResource(R.string.cd_accept),
+                            tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = pulseAlpha),
+                            modifier = Modifier.size(28.dp)
                         )
                     }
-                }
-            }
 
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .clickable {
+                    if (!alignRight && callerPhoto != null) {
+                        CallerAvatarBadge(photo = callerPhoto)
+                    }
+                }
+
+                IconButton(
+                    onClick = {
                         haptics.performStepTick()
                         isDismissing = true
                         onDismiss()
                     },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.KeyboardArrowDown,
-                    contentDescription = stringResource(R.string.cd_dismiss),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = stringResource(R.string.cd_dismiss),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             }
         }
-        }
     }
+}
+
+@Composable
+private fun CallerAvatarBadge(photo: ImageBitmap) {
+    Image(
+        bitmap = photo,
+        contentDescription = stringResource(R.string.cd_caller_photo),
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
+    )
 }

@@ -14,8 +14,8 @@
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingStart="?android:attr/listPreferredItemPaddingStart"
-    android:paddingEnd="?android:attr/listPreferredItemPaddingEnd"
-    android:paddingVertical="12dp"
+    android:paddingEnd="12dp"
+    android:paddingVertical="10dp"
     android:background="@drawable/settingslib_round_background_stateful">
 
     <ImageView
@@ -23,7 +23,8 @@
         android:layout_width="44dp"
         android:layout_height="44dp"
         android:layout_marginEnd="16dp"
-        android:scaleType="fitCenter" />
+        android:scaleType="fitCenter"
+        android:importantForAccessibility="no" />
 
     <LinearLayout
         android:id="@+id/widget_frame"
@@ -31,7 +32,7 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:orientation="vertical"
-        android:paddingEnd="8dp">
+        android:paddingEnd="4dp">
 
         <TextView
             android:id="@android:id/title"
@@ -55,10 +56,9 @@
 
     <ImageView
         android:id="@+id/launch_icon"
-        android:layout_width="38dp"
-        android:layout_height="38dp"
-        android:layout_marginEnd="8dp"
-        android:padding="9dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:padding="14dp"
         android:background="@drawable/bg_library_action_play_pill"
         android:tint="@color/settingslib_materialColorOnPrimaryContainer"
         android:clickable="true"
@@ -69,9 +69,9 @@
 
     <ImageView
         android:id="@+id/settings_icon"
-        android:layout_width="38dp"
-        android:layout_height="38dp"
-        android:padding="9dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:padding="14dp"
         android:background="@drawable/bg_library_action_gear_pill"
         android:tint="@color/settingslib_materialColorOnSurfaceVariant"
         android:clickable="true"
